@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT VOICEVOX 応答取得",
+  "version": "0.7.3",
+  "description": "ChatGPTのセリフをVOICEVOXで読み上げます。話者別の画像表示、再生操作、配役・辞書・音声出力先の設定に対応。",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "offscreen",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ChatGPTの応答を確認"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "speakers.js",
+        "parser.js",
+        "auto-core.js",
+        "casting.js",
+        "content.js",
+        "character-panel.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:50021/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "audio-settings.html",
+    "open_in_tab": true
+  }
+}

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>読み上げ設定・キャラクター</title><link rel="stylesheet" href="popup.css"></head>
+<body class="settings">
+<header class="page-header"><div><p class="eyebrow">VOICEVOX / CHATGPT</p><h1>読み上げ設定・キャラクター</h1></div></header>
+<p class="muted">出力先・読み上げの設定は共通、登場人物の配役は会話ごとに保存します。保存後、このタブを閉じて会話へ戻れます。</p>
+<nav class="settings-tabs" role="tablist" aria-label="設定のカテゴリ">
+<button id="tab-casting" type="button" role="tab" aria-selected="true" aria-controls="panel-casting" tabindex="0">配役</button>
+<button id="tab-reading" type="button" role="tab" aria-selected="false" aria-controls="panel-reading" tabindex="-1">読み上げ</button>
+<button id="tab-output" type="button" role="tab" aria-selected="false" aria-controls="panel-output" tabindex="-1">音声出力</button>
+<button id="tab-members" type="button" role="tab" aria-selected="false" aria-controls="panel-members" tabindex="-1">メンバー</button>
+<button id="tab-help" type="button" role="tab" aria-selected="false" aria-controls="panel-help" tabindex="-1">使い方</button>
+</nav>
+<p id="casting-status" role="status" aria-live="polite"></p>
+<main>
+<div id="casting-controls" hidden>
+<section id="panel-reading" class="card settings-panel" role="tabpanel" aria-labelledby="tab-reading" tabindex="0" hidden>
+<h2>読み上げと抽選</h2>
+<p class="note">すべての会話に共通の設定です。</p>
+<label><input id="cast-unknown" type="checkbox"> 未知の登場人物に声を自動で割り当てる</label>
+<label><input id="cast-narration" type="checkbox"> 名前のない地の文も読み上げる</label>
+<p class="note">地の文を読む場合は、応答の生成完了後にまとめて読み上げます。通常の説明文も対象になります。コード・引用・表は自動読み上げから除外します。</p>
+<details><summary>抽選候補を選ぶ</summary><p class="note">未選択なら全員が候補です。メンバーを均等に抽選し、標準スタイルを使います。</p><div id="casting-candidates"></div></details>
+<button id="save-casting-settings" class="primary" type="button">読み上げ設定を保存</button>
+<h3>感情演出</h3>
+<label><input id="emotion-enabled" type="checkbox" checked> 記号に合わせた控えめな感情演出</label>
+<p class="note">！！・……・？に合わせて話速や抑揚を調整します。[スタイル名] があるセリフはそちらを優先します。</p>
+<button id="save-emotion" type="button">感情演出を保存</button>
+<h3>読み上げ専用の発音辞書</h3>
+<p class="note">1行に「春雨=はるさめ」の形式で入力します。表示は変わりません。同じ単語は会話限定を優先し、長い単語から一致させます。保存後に再生待ちへ追加するセリフに反映されます。</p>
+<label for="dictionary-common">全会話共通</label><textarea id="dictionary-common" placeholder="春雨=はるさめ"></textarea>
+<label for="dictionary-local">この会話限定</label><textarea id="dictionary-local" placeholder="人名=よみかた" disabled></textarea>
+<p id="dictionary-context" class="note"></p>
+<button id="save-dictionary" type="button" disabled>辞書を保存</button>
+<p id="speech-settings-status" role="status" aria-live="polite"></p>
+</section>
+<section id="panel-casting" class="card settings-panel" role="tabpanel" aria-labelledby="tab-casting" tabindex="0">
+<div class="section-heading"><div><h2 id="casting-heading">この会話の配役</h2><p id="casting-conversation" class="note"></p></div><button id="refresh-casting" type="button">更新</button></div>
+<label class="sr-only" for="casting-search">登場人物・担当する声で検索</label>
+<input id="casting-search" class="settings-search" type="search" placeholder="登場人物・担当する声で検索">
+<p id="casting-count" class="note" aria-live="polite"></p>
+<div id="casting-entries"></div>
+<div class="actions"><button id="reroll-casting" type="button">自動配役をすべて再抽選</button></div>
+<p class="note">手動で選んだ配役は全体再抽選でも維持します。個別の「再抽選」を押すと自動配役に戻ります。変更は次に読み上げる応答から反映されます。</p>
+<details><summary>配役の保存・別の会話への引き継ぎ</summary>
+<p class="note">「配役を書き出す」で下欄にJSONを表示します。コピーして保存し、別の会話の設定で貼り付けて読み込めます。読み込むと現在の配役を置き換えます。</p>
+<textarea id="casting-json" aria-label="配役のJSON" placeholder="配役JSON"></textarea>
+<div class="actions"><button id="export-casting" type="button">配役を書き出す</button><button id="import-casting" type="button">配役を読み込む</button></div>
+</details>
+</section>
+</div>
+
+<section id="panel-output" class="card settings-panel" role="tabpanel" aria-labelledby="tab-output" tabindex="0" hidden>
+<h2 id="output-heading">音声の出力先</h2>
+<h3>VOICEVOXの接続先</h3>
+<label for="voicevox-url">VOICEVOX Engine URL</label>
+<input id="voicevox-url" type="url" value="http://127.0.0.1:50021" placeholder="http://127.0.0.1:50021" disabled>
+<p class="note">既定はローカルの http://127.0.0.1:50021 です。別のPCやポートを使う場合は接続先のURLを指定してください。</p>
+<div class="actions"><button id="save-engine" type="button" disabled>接続先を保存・接続確認</button><button id="reset-engine" type="button">ローカルに戻す</button></div>
+<p id="engine-settings-status" role="status" aria-live="polite"></p>
+<h3>再生する機器</h3>
+<label for="audio-output">スピーカー・ヘッドホン</label>
+<select id="audio-output" disabled><option value="">システムの既定</option></select>
+<div class="actions"><button id="save-output" class="primary" type="button" disabled>出力先を保存</button><button id="grant-audio" type="button">機器一覧を更新</button></div>
+<p id="audio-status" role="status" aria-live="polite"></p>
+<p class="note">保存すると再生中の音声にも反映されます。機器が使えない間は既定の出力先で再生し、復活したら戻します。「システムの既定」でOSの出力設定に戻せます。</p>
+<details><summary>機器が一覧に出ないとき</summary><p class="note">「機器一覧を更新」でChromeがマイクへのアクセス許可を求める場合があります。機器一覧の取得のためだけに使用し、取得したマイクのストリームは直ちに停止します。録音・送信は行いません。</p></details>
+</section>
+<section id="panel-members" class="card settings-panel" role="tabpanel" aria-labelledby="tab-members" tabindex="0" hidden>
+<h2 id="members-heading">対応キャラクター・スタイル</h2>
+<p id="catalog-status" class="note" role="status"></p>
+<label for="member-search">キャラクター名・スタイルで絞り込み</label>
+<input id="member-search" type="search" placeholder="例：ずんだもん、あまあま">
+<div id="members"></div>
+</section>
+<section id="panel-help" class="card settings-panel" role="tabpanel" aria-labelledby="tab-help" tabindex="0" hidden>
+<h2 id="help-heading">読み上げの使い方</h2>
+<h3>ChatGPTのカスタム指示に追記するプロンプト</h3>
+<p class="note">ChatGPTの「設定」→「パーソナライズ」→「カスタム指示」に以下を追記してください。既存の指示は残したまま追加できます。保存後、新しい会話でお試しください。</p>
+<label for="custom-instructions">読み上げに必要な最小限の指示</label>
+<textarea id="custom-instructions" rows="8" readonly>読み上げる発言は、必ず「話者名「セリフ」」の形式で、1発言ごとに独立した行または段落にしてください。同じ話者には毎回同じ名前を使ってください。セリフは必ず閉じ括弧「」まで書いてください。
+例：
+ずんだもん「こんにちは。」
+四国めたん「よろしくお願いします。」
+通常はスタイル指定を省略してください。
+この形式の書き方やサンプルを説明するときは、例をコードブロック内に書いてください。</textarea>
+<button id="copy-instructions" type="button">プロンプトをコピー</button>
+<p id="instructions-status" role="status" aria-live="polite"></p>
+<p class="note">VOICEVOXの話者名を使うとその声で読み上げます。それ以外の登場人物名を使う場合は「読み上げ」の自動割り当てをONにするか、「配役」で声を指定してください。</p>
+<p>自動読み上げをONにした後、新しく送信するチャットから読み上げます。ON／OFFはChrome再起動後も保持されます。</p>
+<p>「直近の取得をもう一度読む」は取得済みのセリフ全体を再生待ちに追加します。セリフを選んで読む場合は、自動OFFにして「セリフを確認・選んで再生」を開いてください。</p>
+<p class="note">読み上げが動かないときはVOICEVOXの起動を確認してください。取得の診断情報はポップアップの「詳細・トラブルシューティング」からコピーできます。</p>
+</section>
+</main>
+<script src="settings-tabs.js"></script>
+<script src="speakers.js"></script>
+<script src="audio-settings.js"></script>
+<script src="speech-tools.js"></script>
+<script src="casting-settings.js"></script>
+<script src="speech-settings.js"></script>
+<script src="engine-settings.js"></script>
+</body></html>

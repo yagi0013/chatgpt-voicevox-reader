@@ -1,0 +1,17 @@
+# Local backups and generated artifacts
+chrome-extension_bak/
+__pycache__/
+*.py[cod]
+dist/
+*.crx
+*.pem
+*.log
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.aws/
+.codex/
+.agents/
+.DS_Store

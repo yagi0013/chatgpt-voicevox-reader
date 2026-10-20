@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatGPT 読み上げ</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body class="popup">
+  <header class="page-header"><div><p class="eyebrow">VOICEVOX</p><h1>ChatGPT 読み上げ</h1></div><button id="audio-settings" class="quiet" type="button">設定</button></header>
+  <main>
+    <section class="card playback" aria-label="読み上げの操作">
+      <label class="auto-control"><span>自動読み上げ</span><input id="auto-toggle" type="checkbox" role="switch" disabled></label>
+      <label class="auto-control"><span>キャラクターパネルを表示</span><input id="panel-toggle" type="checkbox" role="switch" disabled></label>
+      <p id="panel-status" class="muted" role="status" aria-live="polite"></p>
+      <p id="auto-status" class="muted" role="status" aria-live="polite">状態を確認中…</p>
+      <p id="play-status" role="status" aria-live="polite"></p>
+      <div class="actions playback-actions">
+        <button id="replay-latest" class="primary" type="button" disabled>直近の取得をもう一度読む</button>
+        <button id="stop" class="stop" type="button" disabled>停止・自動OFF</button>
+      </div>
+      <div class="actions playback-controls" role="group" aria-label="セリフの再生操作">
+        <button id="pause-playback" type="button" disabled>一時停止</button>
+        <button id="skip-playback" type="button" disabled>スキップ（1人分）</button>
+        <button id="cancel-playback" class="stop" type="button" disabled>全キャンセル</button>
+      </div>
+      <p class="note">スキップは現在のセリフ1件、全キャンセルはこの会話の再生中・待機中のすべてが対象です。自動読み上げのON／OFFは維持します。</p>
+      <p id="engine-status" class="connection" role="status" aria-live="polite">VOICEVOX：確認中…</p>
+    </section>
+    <div class="capture-state"><p id="status" role="status" aria-live="polite">接続しています…</p><button id="refresh" class="quiet" type="button">再取得</button></div>
+    <div class="actions recovery">
+      <button id="reload-extension" type="button" hidden>拡張機能を更新</button>
+      <button id="reload-page" type="button" hidden>ChatGPTを再読み込み</button>
+    </div>
+    <p id="warnings" role="status"></p>
+    <details class="card" id="dialogue-details">
+      <summary>セリフを確認・選んで再生 <span id="dialogue-count" class="badge">0件</span></summary>
+      <div class="detail-body">
+        <div id="dialogue"></div>
+        <button id="speak" type="button" disabled>選択したセリフを読む</button>
+        <p class="note">選択再生は自動OFFで使えます。</p>
+      </div>
+    </details>
+    <details class="card">
+      <summary>取得した本文</summary>
+      <div class="detail-body">
+        <label class="sr-only" for="response">取得した本文</label>
+        <textarea id="response" readonly placeholder="応答がここに表示されます"></textarea>
+        <div class="actions"><button id="copy" type="button" disabled>本文をコピー</button></div>
+        <p id="meta" class="note"></p>
+      </div>
+    </details>
+    <details class="card">
+      <summary>詳細・トラブルシューティング</summary>
+      <div class="detail-body">
+        <label class="pause-control"><input id="pause-updates" type="checkbox"> 表示の自動更新を一時停止</label>
+        <p class="note">選択・コピー中の表示を固定します。読み上げは継続します。</p>
+        <details><summary>取得の診断情報</summary><textarea id="diagnostics" readonly aria-label="診断情報"></textarea></details>
+        <div class="actions"><button id="copy-diagnostics" type="button" disabled>診断情報をコピー</button></div>
+      </div>
+    </details>
+    <p id="copy-status" role="status" aria-live="polite"></p>
+  </main>
+  <footer class="note">この画面を閉じても読み上げは続きます。</footer>
+  <script src="speakers.js"></script>
+  <script src="parser.js"></script>
+  <script src="auto-core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GJS
+        run: sudo apt-get update && sudo apt-get install -y gjs
+      - name: JavaScript checks
+        run: python3 tests/run.py
+      - name: Browser checks
+        run: |
+          python3 tests/browser.py
+          python3 tests/character-panel.py
+      - name: Validate and package
+        run: python3 scripts/build_release.py

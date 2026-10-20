@@ -1,0 +1,36 @@
+function check(value, message) { if (!value) throw new Error(message); }
+const cast = new VoiceCasting({unknown: true, narration: true});
+const story = '夜になった。\n\n旅人「こんにちは」\n\nずんだもん「こんばんは」\n\n遠くで鐘が鳴った。';
+const lines = cast.parse(story);
+check(lines.length === 4, 'narration and dialogue must preserve story order');
+check(lines[0].narration && lines[1].label === '旅人' && lines[2].name === 'ずんだもん' && lines[3].narration, 'speaker identity and narration');
+const traveler = cast.find('旅人');
+check(traveler.name !== 'ずんだもん', 'known speaker must be reserved before drawing');
+check(traveler.name !== cast.find('@narration').name, 'narrator must have separate voice');
+check(cast.parse('旅人「また会ったね」')[0].styleId === traveler.styleId, 'casting stable across responses');
+const restored = new VoiceCasting(cast.settings, JSON.parse(JSON.stringify(cast.snapshot())));
+check(restored.parse('旅人「再開」')[0].styleId === traveler.styleId, 'casting survives serialization');
+restored.assign('旅人', '四国めたん', 2, ['旅人さん']);
+check(restored.parse('旅人さん「別名」')[0].styleId === 2, 'aliases share casting');
+restored.reset();
+check(restored.find('旅人').styleId === 2 && restored.find('旅人').manual, 'manual assignment survives reset');
+restored.reroll('旅人');
+check(!restored.find('旅人').manual && restored.find('旅人').name !== '四国めたん', 'individual reroll replaces manual assignment');
+const off = new VoiceCasting({unknown: false, narration: false});
+check(off.parse(story).length === 1, 'independent switches off retain known dialogue');
+const narrow = new VoiceCasting({unknown: true, narration: true, candidates: ['ずんだもん', '四国めたん']});
+const many = narrow.parse('地の文\nA「一」\nB「二」\nC「三」');
+check(many.length === 4 && many.every(item => ['ずんだもん', '四国めたん'].includes(item.name)), 'candidate exhaustion must allow reuse');
+check(many.slice(1).every(item => item.name !== many[0].name), 'narrator reservation survives candidate exhaustion');
+check(new VoiceCasting({unknown: true}).parse('旅人「未完').length === 0, 'incomplete dialogue must wait');
+check(new VoiceCasting({unknown: true, narration: true}).parse('```\n旅人「例」\n```\n> 引用\n# 見出し\n| 表 |').length === 0, 'exclude code, quotations, headings and tables');
+check(new VoiceCasting({unknown: true}).parse('旅人「例」と書いてください').length === 0, 'inline examples must not become dialogue');
+let rejected = false;
+try { restored.assign('別人', '四国めたん', 2, ['旅人さん']); } catch { rejected = true; }
+check(rejected, 'aliases cannot overwrite another person');
+check(new VoiceCasting({}, {entries: [{label: '__proto__', name: 'ずんだもん', styleId: 3}]}).find('__proto__').styleId === 3, 'untrusted names are safe map keys');
+const later = new VoiceCasting({unknown: true, candidates: ['ずんだもん']});
+const initial = later.parse('旅人「初登場」')[0];
+later.parse('ずんだもん「後から登場」');
+check(later.parse('旅人「続き」')[0].styleId === initial.styleId, 'later known speaker must not recast an existing character');
+print('PASS: story casting, narration order, reservation, persistence, switches, aliases, manual locks, rerolls and exhaustion');
