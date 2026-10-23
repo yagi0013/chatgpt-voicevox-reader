@@ -25,7 +25,7 @@
         if (clean[end] === '「') depth++;
         if (clean[end] === '」' && --depth === 0) break;
       }
-      if (depth) break;
+      if (depth) continue;
       const lineEnd = clean.indexOf('\n', end);
       const trailing = clean.slice(end + 1, lineEnd < 0 ? clean.length : lineEnd);
       if (!trailing.trim()) {
@@ -36,7 +36,7 @@
     }
     return result;
   }
-  const key = item => `${item.styleId}\u0000${item.text}`;
+  const key = item => `${item.castingLabel || item.styleId}\u0000${item.requestedStyle || ''}\u0000${item.text}`;
   class SpeechTracker {
     constructor() { this.previous = []; this.suppressed = new Map(); this.armed = false; }
     seed(items) { this.previous = items.map(key); this.suppressed.clear(); this.armed = false; }

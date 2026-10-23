@@ -3,6 +3,8 @@ function items(text) { return speechOnly(text); }
 const sample = '🟢ずんだもん「みなさん、今日は何してたのだ？」\n\n🔴めたん「質問ばかりですわよ？」\n🟣きりたん「雑談ですね。」\n🟡つむぎ「あーしは楽しからいいよ！」';
 assert(items(sample).map(x => x.styleId).join(',') === '3,2,108,8', 'four speaker mapping');
 assert(items('説明です。\n知らない人「対象外」\nずんだもん「未完').length === 0, 'prose, unknown and incomplete excluded');
+assert(items('ずんだもん「前」\n説明です。\nめたん「後」').length === 2, 'prose between dialogue preserves continuation');
+assert(items('ずんだもん「未完\nめたん「後」')[0]?.text === '後', 'unclosed line cannot suppress later complete dialogue');
 assert(items('ずんだもん「対象外」という例です。').length === 0, 'trailing commentary excluded');
 assert(items('```text\nずんだもん「コード例」\n```\n> めたん「引用」\n- つむぎ「箇条書き」\nめたん「本文」').length === 1, 'code, blockquote, bullet excluded');
 assert(items('めたん「引用「こんにちは」です。\n次の行」')[0].text === '引用「こんにちは」です。\n次の行', 'nested multiline');

@@ -1,5 +1,5 @@
 importScripts('speakers.js', 'speech-tools.js');
-const WORKER_BUILD = '0.7.3';
+const WORKER_BUILD = '0.7.4';
 let creating;
 const operations = new Map();
 let engineState = {online: null, version: '', checkedAt: 0};
@@ -68,6 +68,10 @@ async function player(create = false) {
   return true;
 }
 async function route(message, sender) {
+  if (message.type === 'BG_RECAST') {
+    if (sender.url !== chrome.runtime.getURL('player.html')) throw new Error('送信元が対応していません。');
+    return chrome.tabs.sendMessage(message.tabId, {type: 'VOICEVOX_RECAST', item: message.item, unavailable: message.unavailable, endpoint: message.endpoint});
+  }
   if (message.type === 'BG_AUDIO_OUTPUT') {
     if (sender.url !== chrome.runtime.getURL('player.html')) throw new Error('送信元が対応していません。');
     const {audioOutputId = ''} = await chrome.storage.local.get('audioOutputId');

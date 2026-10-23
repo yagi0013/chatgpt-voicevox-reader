@@ -27,7 +27,7 @@ async function testPlayer() {
   await send({type: 'QUEUE', tabId: 2, batchId: 'error', items: [item, item]});
   for (let i = 0; i < 10; i++) await wait();
   const error = await send({type: 'STATUS', tabId: 2});
-  if (!error.status.startsWith('エラー') || error.pending) throw new Error('error status/queue');
+  if (!error.status.startsWith('スキップ') || error.pending || error.active) throw new Error('synthesis connection error must skip without stalling queue');
   failFetch = false;
   const before = played;
   await send({type: 'QUEUE', tabId: 2, batchId: 'recovery', items: [item]});
@@ -142,6 +142,46 @@ async function testPlayer() {
   await send({type: 'STOP', tabId: 13});
   for (let i = 0; i < 10; i++) await wait();
   holdAudio = false;
+  const originalSend = chrome.runtime.sendMessage;
+  let rerolls = 0;
+  chrome.runtime.sendMessage = async message => {
+    if (message.type !== 'BG_RECAST') return originalSend(message);
+    rerolls++;
+    if (message.unavailable.length > 1) return {ok: false};
+    return {ok: true, speaker: {name: '四国めたん', styleId: 2, styleName: 'ノーマル'}};
+  };
+  let rejectPath = 'audio_query';
+  let rejectAll = false;
+  fetch = async (url, options) => {
+    if (url.includes('/' + rejectPath + '?') && (rejectAll || url.includes('speaker=3'))) return {ok: false, status: 422};
+    return realFetch(url, options);
+  };
+  const randomItem = {...item, name: 'ずんだもん', styleId: 3, automatic: true, castingLabel: '旅人'};
+  let beforeRecovery = played;
+  await send({type: 'QUEUE', tabId: 14, batchId: 'fixed-api-error', items: [{...randomItem, automatic: false}, {...item, styleId: 2}]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (played !== beforeRecovery + 1 || rerolls) throw new Error('fixed API failure skips only one speech');
+  for (const path of ['audio_query', 'synthesis']) {
+    rejectPath = path;
+    beforeRecovery = played;
+    const beforeRerolls = rerolls;
+    await send({type: 'QUEUE', tabId: 14, batchId: 'random-api-error-' + path, items: [randomItem, randomItem]});
+    for (let i = 0; i < 30; i++) await wait();
+    if (played !== beforeRecovery + 2 || rerolls !== beforeRerolls + 1) throw new Error('random API failure must reroll and update queued voice: ' + path);
+  }
+  rejectAll = true;
+  beforeRecovery = played;
+  await send({type: 'QUEUE', tabId: 14, batchId: 'exhausted-api-error', items: [randomItem]});
+  for (let i = 0; i < 30; i++) await wait();
+  const exhaustedStatus = await send({type: 'STATUS', tabId: 14});
+  if (played !== beforeRecovery || exhaustedStatus.active || exhaustedStatus.pending) throw new Error('exhausted random candidates must terminate and skip');
+  rejectAll = false;
+  await send({type: 'QUEUE', tabId: 14, batchId: 'after-api-error', items: [{...item, styleId: 2}]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (played !== beforeRecovery + 1) throw new Error('later batches survive API failures');
+  fetch = realFetch;
+  chrome.runtime.sendMessage = originalSend;
+  print('PASS: API failures reroll random voices, skip fixed voices and preserve subsequent playback');
   print('PASS: playback pause/resume position, skip, paused skip, tab isolation, cancel and pause during synthesis');
   print('PASS: saved audio output, temporary fallback, queue continuity, live disconnect/reconnect, preferred output recovery');
   print('PASS: player FIFO, batch dedup, stop, error, recovery, speech rate boundaries and synthesis payload');

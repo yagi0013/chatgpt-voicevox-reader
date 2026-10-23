@@ -137,14 +137,14 @@ window.setInterval = (fn, ms) => { intervals.push({fn, ms}); return intervals.le
 const copied = [];
 Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {async writeText(value) { copied.push(value); }}});
 const fixture = {
-  readerVersion: '0.7.3',
+  readerVersion: '0.7.4',
   text: 'あなたの発言：\\nちょいてすとなー\\nChatGPT の発言：\\n🟢ずんだもん「了解なのだ！」\\n🔴めたん[あまあま]「こちらも音声テストですわ。」\\n🟣きりたん「通常発言です。」\\n🟡つむぎ[ハイテンション]「元気いっぱいでいくよー！」\\n🟢ずんだもん「最後までちゃんと喋れるかな？」',
   auto: {enabled: true, armed: true}, engine: {online: true, version: 'test'},
   url: 'https://chatgpt.com/c/test', method: 'fixture', capturedAt: new Date().toISOString(),
   diagnostics: {eligibleSpeeches: 5, enqueuedSpeeches: 0, autoError: ''}
 };
-let registeredBuild = '0.7.3';
-let workerBuild = '0.7.3';
+let registeredBuild = '0.7.4';
+let workerBuild = '0.7.4';
 const playbackFixture = {active: true, paused: false, pending: 2, status: '再生中'};
 const playbackCommands = [];
 let blockNext = false;
@@ -229,7 +229,7 @@ popup_test = '''
     fixture.readerVersion = '0.6.0';
     document.querySelector('#refresh').click(); await delay();
     if (document.querySelector('#reload-page').hidden || !document.querySelector('#status').textContent.includes('古い取得処理')) throw new Error('stale content script detection');
-    fixture.readerVersion = '0.7.3'; workerBuild = '0.6.0';
+    fixture.readerVersion = '0.7.4'; workerBuild = '0.6.0';
     document.querySelector('#refresh').click(); await delay();
     if (document.querySelector('#reload-extension').hidden || !document.querySelector('#status').textContent.includes('古い拡張機能')) throw new Error('stale background detection');
     result.textContent = 'PASS: real Chrome popup selection, pause/resume, diagnostic copy, inflight update, stale versions and user dialogue sample';

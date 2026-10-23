@@ -28,6 +28,15 @@ GJSテストでは構文、解析、配役、再生制御、出力先の切り�
 
 ChromeテストはローカルHTMLの検証のため `--no-sandbox` を指定します。実際のChatGPTページや利用者のプロフィールは開きません。
 
+WindowsではGoogle Chromeをインストールした環境で、次のモックテストを実行できます。PythonやGJSは不要です。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/regressions.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/settings.ps1
+```
+
+回帰テストには話者チェックの500エラー、別文での再確認、再チェックによる復旧、中止時の結果保持、接続先ごとの除外、ランダム配役の再抽選、固定配役のスキップを含みます。
+
 ## 実機確認
 
 1. 起動したVOICEVOXとChatGPTで、送信後に新しいセリフだけが読まれること。

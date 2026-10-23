@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__chatgptVoicevoxReader) return;
   globalThis.__chatgptVoicevoxReader = true;
-  const READER_BUILD = '0.7.3';
+  const READER_BUILD = '0.7.4';
   let contextStopped = false;
   let extensionVersion = '';
   let observer = null;
@@ -38,6 +38,9 @@
     return loadingCasting;
   }
   async function loadCastingState() {
+    const endpoint = (await chrome.storage.local.get('voicevoxUrl')).voicevoxUrl || 'http://127.0.0.1:50021';
+    const availabilityKey = `voiceAvailability:${endpoint.replace(/\/+$/, '')}`;
+    casting.availability = (await chrome.storage.local.get(availabilityKey))[availabilityKey]?.results || {};
     if (castingKey.startsWith('casting:conversation:') && !/\/c\/[^/?#]+/.test(location.href)) draftKey = `casting:draft:${crypto.randomUUID()}`;
     const key = conversationKey();
     if (key === castingKey) return;
@@ -74,7 +77,7 @@
     if (!castingKey || conversationKey() !== castingKey) return speechOnly(text);
     const items = casting.parse(text, {narration: narration && casting.settings.narration});
     persistCasting().catch(() => {});
-    return items;
+    return items.map(item => ({...item, castingContext: castingKey}));
   }
 
   function findMessages() {
@@ -418,6 +421,23 @@
   read();
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!extensionAvailable()) return;
+    if (message.type === 'VOICEVOX_RECAST') {
+      ready = ready.then(async () => {
+        await loadCasting();
+        const endpoint = (await chrome.storage.local.get('voicevoxUrl')).voicevoxUrl || 'http://127.0.0.1:50021';
+        const entry = casting.find(message.item?.castingLabel || '');
+        if (!message.item?.automatic || !entry || entry.manual || message.item.castingContext !== castingKey || message.endpoint !== endpoint) return {ok: false};
+        const unavailable = message.unavailable || [];
+        if (entry.name === message.item.name || unavailable.includes(entry.name)) casting.reroll(entry.label, unavailable);
+        const header = entry.label + (message.item.requestedStyle ? `[${message.item.requestedStyle}]` : '');
+        const resolved = casting.resolve(entry.label === '@narration' ? '' : header, entry.label === '@narration');
+        await persistCasting();
+        return {ok: Boolean(resolved.speaker), speaker: resolved.speaker};
+      });
+      ready.then(sendResponse, error => sendResponse({ok: false, error: error.message}));
+      ready = ready.catch(() => {});
+      return true;
+    }
     if (message.type === 'VOICEVOX_READ_RESPONSE') {
       ready.then(loadCasting).then(() => sendResponse(read()), error => sendResponse({error: error.message}));
       return true;

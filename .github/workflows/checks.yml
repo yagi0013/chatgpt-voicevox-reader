@@ -5,6 +5,16 @@ on:
 permissions:
   contents: read
 jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regression checks in Chrome
+        shell: powershell
+        run: ./tests/regressions.ps1
+      - name: Settings checks in Chrome
+        shell: powershell
+        run: ./tests/settings.ps1
   test:
     runs-on: ubuntu-24.04
     steps:

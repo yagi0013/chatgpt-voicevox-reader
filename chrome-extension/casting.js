@@ -27,8 +27,12 @@
       const key = normalize(label);
       return [...this.entries.values()].find(entry => normalize(entry.label) === key || entry.aliases.some(alias => normalize(alias) === key));
     }
-    draw(exclude = '') {
-      const catalog = voiceRegistry.catalog;
+    draw(exclude = '', unavailable = []) {
+      const catalog = voiceRegistry.catalog.filter(member => !unavailable.includes(member.name)).map(member => {
+        const styles = member.styles.filter(style => this.availability?.[style.id]?.available !== false);
+        const standard = styles.find(style => style.id === member.styleId) || styles[0];
+        return standard ? {...member, styles, styleId: standard.id, styleName: standard.name} : null;
+      }).filter(Boolean);
       const pool = catalog.filter(member => !this.settings.candidates.length || this.settings.candidates.includes(member.name));
       if (!pool.length) return null;
       const occupied = new Set([...this.used, ...[...this.entries.values()].map(entry => entry.name)]);
@@ -49,9 +53,9 @@
       }
       this.entries.set(label, {label, name: member.name, styleId, manual: true, aliases: clean});
     }
-    reroll(label) {
+    reroll(label, unavailable = []) {
       const old = this.entries.get(label);
-      const member = this.draw(old?.name);
+      const member = this.draw(old?.name, unavailable);
       if (!member) throw new Error('抽選候補のメンバーがありません。');
       this.entries.set(label, {label, name: member.name, styleId: member.styleId, manual: false, aliases: old?.aliases || []});
     }
@@ -64,12 +68,22 @@
       if (!(narration ? this.settings.narration : this.settings.unknown)) return parsed;
       const label = narration ? '@narration' : parsed.label;
       let entry = this.find(label);
-      if (!entry) { this.reroll(label); entry = this.find(label); }
-      const member = voiceRegistry.resolve(entry.name);
+      if (!entry) {
+        if (!this.draw()) return {...parsed, speaker: null};
+        this.reroll(label); entry = this.find(label);
+      }
+      let member = voiceRegistry.resolve(entry.name);
       if (!member) return {...parsed, speaker: null};
-      const style = member.styles.find(style => style.id === entry.styleId) || member.styles.find(style => style.id === member.styleId);
-      const requested = parsed.requestedStyle ? member.styles.find(style => normalize(style.name) === normalize(parsed.requestedStyle)) : null;
+      if (!entry.manual && member.styles.every(style => this.availability?.[style.id]?.available === false)) {
+        if (!this.draw()) return {...parsed, speaker: null};
+        this.reroll(entry.label); entry = this.find(label); member = voiceRegistry.resolve(entry.name);
+      }
+      const styles = member.styles.filter(style => entry.manual || this.availability?.[style.id]?.available !== false);
+      const style = styles.find(style => style.id === entry.styleId) || styles.find(style => style.id === member.styleId) || styles[0];
+      if (!entry.manual) entry.styleId = style.id;
+      const requested = parsed.requestedStyle ? styles.find(style => normalize(style.name) === normalize(parsed.requestedStyle)) : null;
       return {...parsed, label: narration ? 'ナレーション' : parsed.label,
+        castingLabel: entry.label, automatic: !entry.manual,
         styleFallback: Boolean(parsed.requestedStyle && !requested),
         speaker: {...member, styleId: requested?.id ?? style.id, styleName: requested?.name ?? style.name}};
     }
@@ -90,6 +104,7 @@
         const resolved = this.resolve(header, isNarration);
         if (!resolved.speaker) return;
         result.push({label: resolved.label, requestedStyle: resolved.requestedStyle, styleFallback: resolved.styleFallback,
+          castingLabel: resolved.castingLabel, automatic: Boolean(resolved.automatic),
           name: resolved.speaker.name, styleId: resolved.speaker.styleId, styleName: resolved.speaker.styleName, text: body.trim(), narration: isNarration});
       };
       const prose = body => {
@@ -108,7 +123,7 @@
           if (text[end] === '「') depth++;
           if (text[end] === '」' && --depth === 0) break;
         }
-        if (depth) { consumed = text.length; break; }
+        if (depth) { consumed = start.lastIndex; continue; }
         const lineEnd = text.indexOf('\n', end);
         const trailing = text.slice(end + 1, lineEnd < 0 ? text.length : lineEnd);
         if (!trailing.trim()) {

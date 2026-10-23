@@ -13,7 +13,7 @@ OUTPUT = ROOT / 'dist'
 def public_files():
     files = [ROOT / name for name in ('README.md', 'LICENSE', 'custom-instructions.md', '.gitignore', '.gitattributes')]
     for directory, suffixes in [('chrome-extension', {'.js', '.html', '.css', '.json'}),
-                                ('tests', {'.js', '.py'}), ('docs', {'.md'}), ('scripts', {'.py'})]:
+                                ('tests', {'.js', '.py', '.ps1'}), ('docs', {'.md'}), ('scripts', {'.py'})]:
         files.extend(path for path in sorted((ROOT / directory).iterdir()) if path.is_file() and path.suffix in suffixes)
     files.append(ROOT / '.github/workflows/checks.yml')
     return files
