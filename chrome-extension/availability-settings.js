@@ -12,7 +12,7 @@ function showVoiceCheck(report) {
   const results = Object.values(report.results);
   const usable = results.filter(result => result.available).length;
   voiceCheckStatus.textContent = `${new Date(report.checkedAt).toLocaleString()}：使用可 ${usable}／除外 ${results.length - usable} スタイル`;
-  voiceCheckResults.textContent = results.map(result => `${result.available ? '○' : '×'} ${result.name}［${result.styleName}］${result.available ? '' : `：${result.stage} ${result.detail}`}`).join('\n');
+  voiceCheckResults.textContent = results.map(result => `${result.available ? '○' : '×'} ${result.name}［${result.styleName}］${result.available ? '' : `：${result.stage} ${result.errorName || ''} ${result.detail}`}`).join('\n');
 }
 async function loadVoiceCheck() {
   if (voiceCheckController) return;

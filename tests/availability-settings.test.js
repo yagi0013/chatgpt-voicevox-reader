@@ -33,6 +33,16 @@ async function testAvailabilitySettings() {
     checkVoices.click();
     for (let i = 0; i < 5; i++) await tick();
     assert(saved[key].results[1].available, 'successful recheck restores previously unavailable style');
+    const roster = [{name: 'テスト', styles: [{id: 1, name: '通信失敗', type: 'talk'}, {id: 2, name: '後続正常', type: 'talk'}]}];
+    globalThis.fetch = async url => {
+      if (url.endsWith('/speakers')) return {ok: true, async json() {return roster;}};
+      if (new URL(url).searchParams.get('speaker') === '1') throw new TypeError('Failed to fetch');
+      return {ok: true, async json() {return {};}, async blob() {return new Blob(['audio']);}};
+    };
+    checkVoices.click();
+    for (let i = 0; i < 5; i++) await tick();
+    assert(saved[key].results[1].available === false && saved[key].results[2].available === true, 'UI scan saves failed and later healthy styles despite network errors');
+    assert(voiceCheckStatus.textContent.includes('使用可 1／除外 1') && voiceCheckResults.textContent.includes('Failed to fetch'), 'completed scan displays error and counts');
     const firstReport = saved[key];
     globalThis.fetch = async (url, options) => {
       if (url.endsWith('/speakers')) return {ok: true, async json() {return [{name: 'テスト', styles: [{id: 1, name: '正常', type: 'talk'}]}];}};

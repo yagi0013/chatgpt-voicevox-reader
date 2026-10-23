@@ -61,6 +61,7 @@
 <h3>話者・スタイルの使用可否チェック</h3>
 <p class="note">保存済みの接続先で全スタイルを順番に合成します（音は再生しません）。失敗時は別の短い文でも確認します。両方失敗したスタイルは自動配役の候補から除外します。チェックには時間がかかります。読み上げを止めて実行してください。</p>
 <div class="actions"><button id="check-voices" type="button">全話者・スタイルをチェック／再チェック</button><button id="cancel-voice-check" type="button" disabled>中止</button></div>
+<p class="note">各スタイルのエラーやタイムアウトは結果に記録し、最後までチェックを続けます。通信状態によっても失敗するため、通信が復旧したら再チェックしてください。「中止」を押すと以前の保存結果を保持します。</p>
 <p id="voice-check-status" role="status" aria-live="polite"></p>
 <details><summary>チェック結果</summary><pre id="voice-check-results" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
 <h3>再生する機器</h3>

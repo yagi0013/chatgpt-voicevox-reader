@@ -20,9 +20,24 @@ async function testAvailability() {
     assert(calls.filter(call => call.url.includes('/synthesis?speaker=2')).length === 2, 'failed synthesis retries second text');
     assert(voiceAvailability.endpointKey('http://test/') === voiceAvailability.endpointKey('http://test'), 'endpoint normalization');
     globalThis.fetch = async () => {throw new TypeError('offline');};
-    let disconnected = false;
-    try {await voiceAvailability.scan('http://test', catalog, {signal: controller.signal});} catch {disconnected = true;}
-    assert(disconnected, 'network failure must not produce unavailable report');
+    const disconnected = await voiceAvailability.scan('http://test', catalog, {signal: controller.signal});
+    assert(Object.values(disconnected.results).length === 4 && Object.values(disconnected.results).every(result => !result.available && result.errorName === 'TypeError'), 'network failures are recorded for every style without interrupting scan');
+    const failureCatalog = [{name: '例外確認', styles: [
+      {id: 10, name: 'タイムアウト'}, {id: 11, name: '通信失敗'}, {id: 12, name: '不正JSON'},
+      {id: 13, name: '空音声'}, {id: 14, name: '合成タイムアウト'}, {id: 15, name: '本文取得失敗'}, {id: 16, name: '最後の正常話者'}
+    ]}];
+    globalThis.fetch = async url => {
+      const parsed = new URL(url), id = Number(parsed.searchParams.get('speaker'));
+      if (id === 10 || (id === 14 && parsed.pathname === '/synthesis')) throw new DOMException('timeout', 'TimeoutError');
+      if (id === 11) throw new TypeError('Failed to fetch');
+      if (id === 15) return {ok: false, status: 500, async text() {throw new Error('body failed');}};
+      return {ok: true, async json() {if (id === 12) throw new SyntaxError('Invalid JSON'); return {};}, async blob() {return new Blob(id === 13 ? [] : ['audio']);}};
+    };
+    const failures = await voiceAvailability.scan('http://test', failureCatalog, {signal: controller.signal});
+    assert(Object.keys(failures.results).length === 7 && failures.results[16].available, 'exceptions must not prevent checking later healthy voice');
+    for (let id = 10; id < 16; id++) assert(!failures.results[id].available && failures.results[id].firstFailure, 'each failing style retries another text and records failure: ' + id);
+    assert(failures.results[12].stage === 'audio_query' && failures.results[13].stage === 'synthesis' && failures.results[14].errorName === 'TimeoutError', 'non-HTTP errors keep failing stage and diagnostic');
+    assert(failures.results[15].status === 500, 'HTTP status survives response body failure');
     controller.abort();
     let cancelled = false;
     try {await voiceAvailability.scan('http://test', catalog, {signal: controller.signal});} catch {cancelled = true;}

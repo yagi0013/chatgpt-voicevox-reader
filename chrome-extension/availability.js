@@ -9,7 +9,7 @@
         body: body ? JSON.stringify(body) : undefined
       });
       if (!response.ok) {
-        const detail = (await response.text()).slice(0, 300);
+        const detail = (await response.text().catch(error => `${error.name}: ${error.message}`)).slice(0, 300);
         throw Object.assign(new Error(`HTTP ${response.status}: ${detail}`), {httpStatus: response.status});
       }
       return response;
@@ -22,9 +22,10 @@
       return {available: true};
     } catch (error) {
       signal.throwIfAborted();
-      // Connection failures stop the scan; they do not prove that a voice is unusable.
-      if (!error.httpStatus) throw error;
-      return {available: false, stage, status: error.httpStatus, detail: error.message};
+      // Only the user's cancellation ends a scan. A timeout or malformed response
+      // belongs to this style, just like an HTTP failure, and must not hide the rest.
+      return {available: false, stage, status: error.httpStatus,
+        errorName: error.name || 'Error', detail: error.message || String(error)};
     }
   }
   async function scan(endpoint, catalog, {signal, progress = () => {}}) {
