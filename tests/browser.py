@@ -116,7 +116,7 @@ test = '''
 for mode in ('keyboard', 'click', 'generation', 'message-id', 'virtualized'):
     with tempfile.TemporaryDirectory(prefix='voicevox-browser-') as directory:
         folder = Path(directory)
-        scripts = mock + '\n' + '\n'.join((root / 'chrome-extension' / file).read_text() for file in ('speakers.js','parser.js','auto-core.js','casting.js','content.js'))
+        scripts = mock + '\n' + '\n'.join((root / 'chrome-extension' / file).read_text() for file in ('speakers.js','parser.js','auto-core.js','casting.js','availability.js','content.js'))
         scripts += '\nconst MODE = ' + repr(mode) + ';\n' + test
         page = folder / 'test.html'
         markup = '<!doctype html><meta charset="utf-8"><main><form><div id="conversation"><div id="old-turn"><div data-user-message-bubble>以前の質問</div><div data-chatgpt-selection-message-id="old-response"><p>めたん「過去の発言」</p></div></div></div></form></main><div id="alternative-composer" contenteditable="true" role="textbox"></div><button id="send" aria-label="メッセージを送信">送信</button><pre id="test-result">PENDING</pre><script>' + scripts.replace('</script', '<\\/script') + '</script>'
@@ -137,14 +137,14 @@ window.setInterval = (fn, ms) => { intervals.push({fn, ms}); return intervals.le
 const copied = [];
 Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {async writeText(value) { copied.push(value); }}});
 const fixture = {
-  readerVersion: '0.7.4',
+  readerVersion: '0.7.5',
   text: 'あなたの発言：\\nちょいてすとなー\\nChatGPT の発言：\\n🟢ずんだもん「了解なのだ！」\\n🔴めたん[あまあま]「こちらも音声テストですわ。」\\n🟣きりたん「通常発言です。」\\n🟡つむぎ[ハイテンション]「元気いっぱいでいくよー！」\\n🟢ずんだもん「最後までちゃんと喋れるかな？」',
   auto: {enabled: true, armed: true}, engine: {online: true, version: 'test'},
   url: 'https://chatgpt.com/c/test', method: 'fixture', capturedAt: new Date().toISOString(),
   diagnostics: {eligibleSpeeches: 5, enqueuedSpeeches: 0, autoError: ''}
 };
-let registeredBuild = '0.7.4';
-let workerBuild = '0.7.4';
+let registeredBuild = '0.7.5';
+let workerBuild = '0.7.5';
 const playbackFixture = {active: true, paused: false, pending: 2, status: '再生中'};
 const playbackCommands = [];
 let blockNext = false;
@@ -229,7 +229,7 @@ popup_test = '''
     fixture.readerVersion = '0.6.0';
     document.querySelector('#refresh').click(); await delay();
     if (document.querySelector('#reload-page').hidden || !document.querySelector('#status').textContent.includes('古い取得処理')) throw new Error('stale content script detection');
-    fixture.readerVersion = '0.7.4'; workerBuild = '0.6.0';
+    fixture.readerVersion = '0.7.5'; workerBuild = '0.6.0';
     document.querySelector('#refresh').click(); await delay();
     if (document.querySelector('#reload-extension').hidden || !document.querySelector('#status').textContent.includes('古い拡張機能')) throw new Error('stale background detection');
     result.textContent = 'PASS: real Chrome popup selection, pause/resume, diagnostic copy, inflight update, stale versions and user dialogue sample';
@@ -300,7 +300,7 @@ def check_page(markup, prefix):
         print(parser.value, flush=True)
 
 story_mock = mock.replace('const contentData = {};', 'const contentData = {}; let storageEvent;').replace('async set(values) { Object.assign(contentData, values); }', 'async set(values) { Object.assign(contentData, values); realTimeout(() => storageEvent?.(Object.fromEntries(Object.entries(values).map(([key, newValue]) => [key, {newValue}])), "local"), 0); }').replace('onChanged: {addListener() {}}', 'onChanged: {addListener(fn) { storageEvent = fn; }}')
-scripts = story_mock + '\n' + '\n'.join((root / 'chrome-extension' / file).read_text() for file in ('speakers.js', 'parser.js', 'auto-core.js', 'casting.js', 'content.js')) + '\n' + story_test
+scripts = story_mock + '\n' + '\n'.join((root / 'chrome-extension' / file).read_text() for file in ('speakers.js', 'parser.js', 'auto-core.js', 'casting.js', 'availability.js', 'content.js')) + '\n' + story_test
 check_page('<!doctype html><meta charset="utf-8"><main><div id="conversation"><div data-chatgpt-selection-message-id="old-response"><p>めたん「過去の発言」</p></div></div></main><div id="alternative-composer" contenteditable="true"></div><pre id="test-result">PENDING</pre><script>' + scripts.replace('</script', '<\\/script') + '</script>', 'voicevox-story-')
 
 settings_mock = r'''
@@ -464,7 +464,7 @@ invalidation_test = r'''
   } catch (error) { document.querySelector('#test-result').textContent = 'FAIL: ' + error.message; }
 })();
 '''
-scripts = mock.replace('return intervals.length;', 'return 10000 + intervals.length;') + '\n' + '\n'.join((root / 'chrome-extension' / file).read_text() for file in ('speakers.js', 'parser.js', 'auto-core.js', 'casting.js', 'content.js')) + '\n' + invalidation_test
+scripts = mock.replace('return intervals.length;', 'return 10000 + intervals.length;') + '\n' + '\n'.join((root / 'chrome-extension' / file).read_text() for file in ('speakers.js', 'parser.js', 'auto-core.js', 'casting.js', 'availability.js', 'content.js')) + '\n' + invalidation_test
 check_page('<!doctype html><meta charset="utf-8"><main><p>ずんだもん「確認」</p></main><pre id="test-result">PENDING</pre><script>' + scripts.replace('</script', '<\\/script') + '</script>', 'voicevox-invalidation-')
 
 member_test = r'''

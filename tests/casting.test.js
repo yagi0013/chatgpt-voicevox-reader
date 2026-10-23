@@ -46,13 +46,10 @@ try { recovery.reroll('旅人', ['ずんだもん', '四国めたん']); } catch
 check(exhausted, 'exhausted recovery terminates');
 recovery.assign('旅人', '四国めたん', 2);
 check(!recovery.parse('旅人「固定」')[0].automatic, 'manual assignment cannot reroll automatically');
-const availabilityCast = new VoiceCasting({unknown: true, candidates: ['ずんだもん', '四国めたん']});
-availabilityCast.availability = Object.fromEntries(voiceRegistry.catalog.flatMap(member => member.styles.map(style => [style.id, {available: false}])));
-availabilityCast.availability[0] = {available: true};
-const usableSpeech = availabilityCast.parse('新しい人「声の確認」')[0];
-check(usableSpeech?.name === '四国めたん' && usableSpeech.styleId === 0, 'automatic casting uses available alternate style when standard unavailable');
-availabilityCast.availability[0] = {available: false};
-check(availabilityCast.parse('新しい人「続き」\n別の人「新規」').length === 0, 'all unavailable candidates skip without aborting parser');
-check(availabilityCast.parse('ずんだもん「明示指定」')[0]?.styleId === 3, 'explicit voices remain fixed for runtime skip');
-availabilityCast.availability = {};
-check(availabilityCast.parse('新しい人「再チェック後」').length === 1, 'cleared check results allow voices again');
+const suspendedCheck = new VoiceCasting({unknown: true, candidates: ['ずんだもん']});
+suspendedCheck.availability = Object.fromEntries(voiceRegistry.catalog.flatMap(member => member.styles.map(style => [style.id, {available: false}])));
+check(suspendedCheck.parse('旅人「事前判定は無視」')[0]?.styleId === 3, 'suspended precheck cannot exclude automatic voices');
+check(suspendedCheck.parse('旅人[あまあま]「指定スタイルも有効」')[0]?.styleId === 1, 'suspended precheck cannot exclude requested styles');
+let noRetryCandidate = false;
+try {suspendedCheck.reroll('旅人', ['ずんだもん']);} catch {noRetryCandidate = true;}
+check(noRetryCandidate, 'runtime reroll still excludes voices already failed for current speech');

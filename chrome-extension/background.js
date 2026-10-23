@@ -1,5 +1,5 @@
 importScripts('speakers.js', 'speech-tools.js');
-const WORKER_BUILD = '0.7.4';
+const WORKER_BUILD = '0.7.5';
 let creating;
 const operations = new Map();
 let engineState = {online: null, version: '', checkedAt: 0};
@@ -137,12 +137,12 @@ async function route(message, sender) {
   }
   if (message.type === 'BG_CHARACTER_IMAGE') {
     const endpoint = await engineUrl();
-    const rosterResponse = await fetch(`${endpoint}/speakers`, {signal: AbortSignal.timeout(5000)});
+    const rosterResponse = await fetch(`${endpoint}/speakers`, {signal: AbortSignal.timeout(15000)});
     if (!rosterResponse.ok) throw new Error('キャラクター一覧を取得できませんでした');
     const roster = await rosterResponse.json();
     const member = roster.find(speaker => speaker.styles.some(style => style.id === message.styleId));
     if (!member) return {ok: true, image: ''};
-    const response = await fetch(`${endpoint}/speaker_info?speaker_uuid=${encodeURIComponent(member.speaker_uuid)}`, {signal: AbortSignal.timeout(5000)});
+    const response = await fetch(`${endpoint}/speaker_info?speaker_uuid=${encodeURIComponent(member.speaker_uuid)}`, {signal: AbortSignal.timeout(60000)});
     if (!response.ok) throw new Error('キャラクター画像を取得できませんでした');
     const info = await response.json();
     const portrait = info.portrait || info.style_infos?.[0]?.icon || '';
@@ -162,11 +162,13 @@ async function route(message, sender) {
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (!message.type?.startsWith('BG_')) return;
   const tabId = sender.tab?.id ?? message.tabId;
-  const previous = operations.get(tabId) || Promise.resolve();
+  // Remote portraits can be slow; image downloads must not delay playback controls.
+  const operationKey = message.type === 'BG_CHARACTER_IMAGE' ? `image:${tabId}` : tabId;
+  const previous = operations.get(operationKey) || Promise.resolve();
   const task = previous.catch(() => {}).then(() => route(message, sender));
-  operations.set(tabId, task);
+  operations.set(operationKey, task);
   task.then(respond, error => respond({ok: false, error: error.message})).finally(() => {
-    if (operations.get(tabId) === task) operations.delete(tabId);
+    if (operations.get(operationKey) === task) operations.delete(operationKey);
   });
   return true;
 });

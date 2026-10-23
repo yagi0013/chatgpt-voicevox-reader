@@ -1,6 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $extension = Join-Path $root 'chrome-extension'
+$settingsHtml = [IO.File]::ReadAllText((Join-Path $extension 'audio-settings.html'))
+if ($settingsHtml -match 'id="check-voices"|src="availability(?:-settings)?\.js"') {throw 'Suspended precheck must not be exposed or loaded'}
+$manifestText = [IO.File]::ReadAllText((Join-Path $extension 'manifest.json'))
+if ($manifestText -match '"availability.js"') {throw 'Suspended precheck must not be injected'}
 $checks = ''
 foreach ($path in Get-ChildItem -LiteralPath $extension -Filter '*.js') {
  $checks += 'new Function(' + (ConvertTo-Json -Compress -InputObject ([IO.File]::ReadAllText($path.FullName))) + ');'
@@ -27,7 +31,7 @@ foreach ($suite in @('background', 'player', 'content')) {
  $mockSource = [regex]::Replace($mockSource, 'function setTimeout\(callback, ms\).*?\r?\n', '')
  $source += $mockSource + "`n"
  if ($suite -eq 'content') {
-  foreach ($name in @('parser.js','auto-core.js','casting.js')) { $source += [IO.File]::ReadAllText((Join-Path $extension $name)) + "`n" }
+  foreach ($name in @('parser.js','auto-core.js','casting.js','availability.js')) { $source += [IO.File]::ReadAllText((Join-Path $extension $name)) + "`n" }
  }
  $source += [IO.File]::ReadAllText((Join-Path $extension ($suite + '.js'))) + "`n"
  $test = [IO.File]::ReadAllText((Join-Path $PSScriptRoot ($suite + '.test.js')))
@@ -44,7 +48,7 @@ $page = Join-Path $folder 'test.html'
 $stdout = Join-Path $folder 'stdout.txt'
 $arguments = @('--headless', '--no-sandbox', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', ('--user-data-dir="' + $folder + '\profile"'), '--virtual-time-budget=10000', '--dump-dom', ([uri]$page).AbsoluteUri)
 $process = Start-Process -FilePath 'C:\Program Files\Google\Chrome\Application\chrome.exe' -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError (Join-Path $folder 'stderr.txt')
-if (!$process.WaitForExit(30000)) {throw ('Chrome timed out; logs: ' + $folder)}
+if (!$process.WaitForExit(60000)) {throw ('Chrome timed out; logs: ' + $folder)}
 $output = Get-Content -Encoding UTF8 -LiteralPath $stdout
 $result = [regex]::Match(($output -join "`n"), '<pre id="result">(.*?)</pre>', 'Singleline').Groups[1].Value
 Write-Output $result

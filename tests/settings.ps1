@@ -6,6 +6,7 @@ const saved = {};
 const calls = [];
 let paused = 0;
 let failQuery = false;
+let failSynthesis = false;
 let holdQuery = false;
 let releaseQuery;
 window.chrome = {
@@ -20,6 +21,7 @@ window.fetch = async (url, options) => {
    if (failQuery) throw new Error('test failure');
    if (holdQuery) await new Promise(resolve => {releaseQuery = resolve;});
  }
+ if (url.includes('/synthesis?') && failSynthesis) return {ok:false, status:500, async text() {return '{"detail":"Internal Server Error"}';}};
  return {ok: true, async json() {
    if (url.endsWith('/version')) return 'test';
    if (url.endsWith('/speakers')) return [{name: '四国めたん', styles: [{id: 2, name: 'ノーマル'}]}];
@@ -60,10 +62,26 @@ $check = @'
   assert(!previewActive, 'stale synthesis restarted');
   failQuery = true; buttons[0].click(); await tick();
   assert(!previewActive && buttons[0].textContent === '試聴', 'error restores button');
+  failQuery = false; failSynthesis = true;
+  await previewVoice('No.7', 29, buttons[0]);
+  assert(castStatus.textContent.includes('styleId=29') && castStatus.textContent.includes('synthesis') && castStatus.textContent.includes('HTTP 500') && castStatus.textContent.includes('Internal Server Error'), 'preview reports upstream synthesis failure and exact style');
+  failSynthesis = false;
   failQuery = false; buttons[0].click(); await tick(); previewActive.audio.onended();
   assert(!previewActive && buttons[0].textContent === '試聴', 'end restores button');
   assert(calls.some(url => url.startsWith(saved.voicevoxUrl + '/audio_query')), 'preview endpoint');
   assert(document.querySelector('#custom-instructions').readOnly, 'copyable prompt');
+  const originalFetch = window.fetch;
+  memberRoster = null;
+  window.fetch = async (url, options) => {
+    if (url.endsWith('/speakers')) return {ok:true, async json() {return [{speaker_uuid:'test-portrait', styles:[{id:2}]}];}};
+    return new Promise((resolve,reject) => {
+      const timer = setTimeout(() => resolve({ok:true, async json() {return {portrait:'portrait-test'};}}),6000);
+      options.signal.addEventListener('abort', () => {clearTimeout(timer); reject(options.signal.reason);}, {once:true});
+    });
+  };
+  const portrait = await memberPortrait({styleId:2}, memberImageVersion);
+  assert(portrait === 'data:image/png;base64,portrait-test', 'portrait must tolerate response slower than five seconds');
+  window.fetch = originalFetch;
   document.querySelector('#result').textContent = 'PASS: settings URL, health, roster, preview switching, cancellation, completion, errors and prompt';
  } catch (error) {document.querySelector('#result').textContent = 'FAIL: ' + error.stack;}
 })();
@@ -103,7 +121,9 @@ foreach ($suite in @('background', 'player')) {
  $source += $test + "`nreturn " + $function + '();'
  $regressions += 'await new Function(' + (ConvertTo-Json -Compress -InputObject $source) + ')();'
 }
-$check = $check.Replace('await tick(); await tick();', ($regressions + 'await tick(); await tick();'))
+$insertionPoint = $check.IndexOf('await tick(); await tick();')
+if ($insertionPoint -lt 0) {throw 'Regression insertion point not found'}
+$check = $check.Substring(0, $insertionPoint) + $regressions + $check.Substring($insertionPoint)
 $html = $html.Replace('</body>', '<pre id="result">PENDING</pre><script>' + $syntax + $check + '</script></body>')
 $folder = Join-Path $env:TEMP ('voicevox-settings-' + [guid]::NewGuid())
 [IO.Directory]::CreateDirectory($folder) | Out-Null
@@ -112,9 +132,9 @@ $page = Join-Path $folder 'test.html'
 $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 $stdout = Join-Path $folder 'stdout.txt'
 $stderr = Join-Path $folder 'stderr.txt'
-$arguments = @('--headless', '--no-sandbox', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', ('--user-data-dir="' + $folder + '\profile"'), '--virtual-time-budget=5000', '--dump-dom', ([uri]$page).AbsoluteUri)
+$arguments = @('--headless', '--no-sandbox', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', ('--user-data-dir="' + $folder + '\profile"'), '--virtual-time-budget=15000', '--dump-dom', ([uri]$page).AbsoluteUri)
 $process = Start-Process -FilePath $chrome -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-if (!$process.WaitForExit(30000)) {throw ('Chrome timed out; logs: ' + $folder)}
+if (!$process.WaitForExit(60000)) {throw ('Chrome timed out; logs: ' + $folder)}
 $output = Get-Content -Encoding utf8 $stdout
 $result = [regex]::Match(($output -join "`n"), '<pre id="result">(.*?)</pre>', 'Singleline').Groups[1].Value
 Write-Output $result

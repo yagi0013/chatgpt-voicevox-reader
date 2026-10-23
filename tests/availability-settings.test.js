@@ -13,6 +13,8 @@ const chrome = {storage: {local: {
 async function testAvailabilitySettings() {
   const assert = (value, message) => {if (!value) throw new Error(message);};
   const originalFetch = globalThis.fetch;
+  const originalScan = voiceAvailability.scan;
+  voiceAvailability.scan = (endpoint, catalog, options) => originalScan(endpoint, catalog, {...options, intervalMs: 0, retryMs: 0});
   const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   let fail = false;
   globalThis.fetch = async url => {
@@ -41,8 +43,8 @@ async function testAvailabilitySettings() {
     };
     checkVoices.click();
     for (let i = 0; i < 5; i++) await tick();
-    assert(saved[key].results[1].available === false && saved[key].results[2].available === true, 'UI scan saves failed and later healthy styles despite network errors');
-    assert(voiceCheckStatus.textContent.includes('使用可 1／除外 1') && voiceCheckResults.textContent.includes('Failed to fetch'), 'completed scan displays error and counts');
+    assert(saved[key].results[1].available === null && saved[key].results[2].available === true, 'UI scan saves indeterminate and later healthy styles despite network errors');
+    assert(voiceCheckStatus.textContent.includes('判定不能 1') && voiceCheckResults.textContent.includes('Failed to fetch') && voiceCheckResults.textContent.includes('除外しません'), 'completed scan distinguishes network failures from exclusions');
     const firstReport = saved[key];
     globalThis.fetch = async (url, options) => {
       if (url.endsWith('/speakers')) return {ok: true, async json() {return [{name: 'テスト', styles: [{id: 1, name: '正常', type: 'talk'}]}];}};
@@ -58,5 +60,5 @@ async function testAvailabilitySettings() {
     saved.voicevoxUrl = 'http://other';
     await loadVoiceCheck();
     assert(voiceCheckStatus.textContent.includes('未チェック') && !voiceCheckResults.textContent, 'endpoint change shows its own report');
-  } finally {globalThis.fetch = originalFetch; fixture.remove();}
+  } finally {globalThis.fetch = originalFetch; voiceAvailability.scan = originalScan; fixture.remove();}
 }

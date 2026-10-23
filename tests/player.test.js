@@ -181,6 +181,82 @@ async function testPlayer() {
   if (played !== beforeRecovery + 1) throw new Error('later batches survive API failures');
   fetch = realFetch;
   chrome.runtime.sendMessage = originalSend;
+  holdAudio = true;
+  const beforePipeline = requests.length;
+  let pipelineInFlight = 0, maxPipelineInFlight = 0;
+  fetch = async (url, options) => {
+    pipelineInFlight++;
+    maxPipelineInFlight = Math.max(maxPipelineInFlight, pipelineInFlight);
+    try {await wait(); return await realFetch(url, options);}
+    finally {pipelineInFlight--;}
+  };
+  await send({type: 'QUEUE', tabId: 15, batchId: 'pipeline', items: [
+    {...item, text: '先行A'}, {...item, text: '先行B'}, {...item, text: '先行C'},
+    {...item, text: '先行D'}, {...item, text: '先行E'}, {...item, text: '先行F'}
+  ]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (current.item.text !== '先行A' || requests.length !== beforePipeline + 8) throw new Error('synthesize at most three future speeches while first is still playing');
+  if (maxPipelineInFlight !== 1 || queue.filter(job => job.preparation).length !== 3) throw new Error('three-item synthesis queue must execute requests serially');
+  const pipelineQueries = requests.slice(beforePipeline).filter(url => url.includes('/audio_query?'));
+  for (const [index, text] of ['先行A','先行B','先行C','先行D'].entries()) {
+    if (!pipelineQueries[index]?.includes(encodeURIComponent(text))) throw new Error('prefetch must preserve FIFO order');
+  }
+  if (liveUrls.size !== 1) throw new Error('prefetched audio must not allocate a playback URL');
+  const preparedRequests = requests.length;
+  await send({type: 'PAUSE', tabId: 15});
+  for (let i = 0; i < 5; i++) await wait();
+  if (requests.length !== preparedRequests) throw new Error('pause cannot grow synthesis buffer');
+  await send({type: 'RESUME', tabId: 15});
+  current.audio.onended();
+  for (let i = 0; i < 20; i++) await wait();
+  if (current.item.text !== '先行B' || requests.length !== preparedRequests + 2 || liveUrls.size !== 1) throw new Error('prepared speech plays in order without re-synthesis and advances lookahead');
+  if (queue.filter(job => job.preparation).length !== 3 || maxPipelineInFlight !== 1) throw new Error('consume one prepared speech and refill exactly one serial slot');
+  await send({type: 'STOP', tabId: 15});
+  for (let i = 0; i < 10; i++) await wait();
+  if (liveUrls.size || queue.length || current) throw new Error('stop must release active and prepared audio');
+  fetch = realFetch;
+  let releasePrefetch;
+  let prefetchSignal;
+  fetch = async (url, options) => {
+    if (url.includes('/audio_query?') && url.includes(encodeURIComponent('中断B'))) {
+      prefetchSignal = options.signal;
+      await new Promise(resolve => {releasePrefetch = resolve;});
+    }
+    return realFetch(url, options);
+  };
+  await send({type: 'QUEUE', tabId: 16, batchId: 'cancel-prefetch', items: [{...item, text: '中断A'}, {...item, text: '中断B'}]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (!releasePrefetch || current.item.text !== '中断A') throw new Error('prefetch must start before current playback ends');
+  await send({type: 'STOP', tabId: 16});
+  for (let i = 0; i < 10; i++) await wait();
+  if (!prefetchSignal.aborted || current || queue.length || liveUrls.size) throw new Error('stop must abort in-flight prefetch');
+  fetch = realFetch;
+  await send({type: 'QUEUE', tabId: 17, batchId: 'after-cancelled-prefetch', items: [item]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (current?.tabId !== 17 || !current.audio) throw new Error('cancelled prefetch cannot stall later batches');
+  releasePrefetch();
+  await send({type: 'STOP', tabId: 17});
+  for (let i = 0; i < 10; i++) await wait();
+  holdAudio = false;
+  print('PASS: synthesis overlaps playback with bounded lookahead, FIFO, cancellation and resource cleanup');
+  holdAudio = true;
+  let pipelineEndpoint = 'http://old-engine';
+  chrome.runtime.sendMessage = async message => {
+    const result = await originalSend(message);
+    return message.type === 'BG_AUDIO_OUTPUT' ? {...result, voicevoxUrl: pipelineEndpoint} : result;
+  };
+  const beforeEndpointChange = requests.length;
+  await send({type: 'QUEUE', tabId: 18, batchId: 'pipeline-endpoint', items: [{...item, text: '切替A'}, {...item, text: '切替B'}]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (requests.length !== beforeEndpointChange + 4) throw new Error('endpoint test needs next speech prepared');
+  pipelineEndpoint = 'http://new-engine';
+  current.audio.onended();
+  for (let i = 0; i < 20; i++) await wait();
+  if (current.item.text !== '切替B' || requests.length !== beforeEndpointChange + 6 || !requests.at(-1).startsWith('http://new-engine/')) throw new Error('endpoint change must discard and regenerate prefetched audio');
+  await send({type: 'STOP', tabId: 18});
+  for (let i = 0; i < 10; i++) await wait();
+  chrome.runtime.sendMessage = originalSend;
+  holdAudio = false;
   print('PASS: API failures reroll random voices, skip fixed voices and preserve subsequent playback');
   print('PASS: playback pause/resume position, skip, paused skip, tab isolation, cancel and pause during synthesis');
   print('PASS: saved audio output, temporary fallback, queue continuity, live disconnect/reconnect, preferred output recovery');

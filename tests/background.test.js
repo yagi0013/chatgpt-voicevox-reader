@@ -75,6 +75,26 @@ async function testBackground() {
   let rejectedApply = false;
   try { await route({type: 'BG_APPLY_OUTPUT'}, sender); } catch { rejectedApply = true; }
   if (!rejectedApply) throw new Error('only settings page may apply output');
+  engineRunning = true;
+  const originalFetch = fetch;
+  let releasePortrait;
+  fetch = async url => {
+    if (url.includes('/speaker_info?')) {
+      await new Promise(resolve => {releasePortrait = resolve;});
+      return {ok: true, async json() {return {portrait: 'test-image'};}};
+    }
+    return originalFetch(url);
+  };
+  const imageResult = new Promise(resolve => backgroundListener({type: 'BG_CHARACTER_IMAGE', styleId: 3}, sender, resolve));
+  for (let i = 0; i < 40; i++) await Promise.resolve();
+  if (!releasePortrait) throw new Error('portrait download did not start');
+  let skippedWhileLoading = false;
+  const skipResult = new Promise(resolve => backgroundListener({type: 'BG_SKIP'}, sender, result => {skippedWhileLoading = true; resolve(result);}));
+  for (let i = 0; i < 40; i++) await Promise.resolve();
+  if (!skippedWhileLoading) throw new Error('slow portrait must not block playback controls');
+  releasePortrait();
+  if (!(await imageResult).image || !(await skipResult).ok) throw new Error('portrait and skip results');
+  fetch = originalFetch;
   print('PASS: background preference restore, health cache, offline gate, recovery, stop and stale token');
 }
 const loop = new GLib.MainLoop(null, false);

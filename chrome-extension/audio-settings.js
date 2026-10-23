@@ -95,21 +95,21 @@ const memberImageQueue = [];
 async function memberPortrait(member, version) {
   const {voicevoxUrl = 'http://127.0.0.1:50021'} = await chrome.storage.local.get('voicevoxUrl');
   if (version !== memberImageVersion) return '';
-  if (!memberRoster) memberRoster = fetch(`${voicevoxUrl}/speakers`, {signal: AbortSignal.timeout(5000)}).then(response => {
+  if (!memberRoster) memberRoster = fetch(`${voicevoxUrl}/speakers`, {signal: AbortSignal.timeout(15000)}).then(response => {
     if (!response.ok) throw new Error('キャラクター一覧を取得できませんでした');
     return response.json();
   }).catch(error => { memberRoster = null; throw error; });
   const roster = await memberRoster;
   const speaker = roster.find(item => item.styles.some(style => style.id === member.styleId));
   if (!speaker) return '';
-  const response = await fetch(`${voicevoxUrl}/speaker_info?speaker_uuid=${encodeURIComponent(speaker.speaker_uuid)}`, {signal: AbortSignal.timeout(5000)});
-  if (!response.ok) throw new Error('画像を取得できませんでした');
+  const response = await fetch(`${voicevoxUrl}/speaker_info?speaker_uuid=${encodeURIComponent(speaker.speaker_uuid)}`, {signal: AbortSignal.timeout(60000)});
+  if (!response.ok) throw new Error(`画像取得 HTTP ${response.status}`);
   const info = await response.json();
   const source = info.portrait || info.style_infos?.[0]?.icon;
   return source ? `data:image/png;base64,${source}` : '';
 }
 function drainMemberImages() {
-  while (activeMemberImages < 3 && memberImageQueue.length) {
+  while (activeMemberImages < 1 && memberImageQueue.length) {
     const {member, image, fallback, version} = memberImageQueue.shift();
     if (!image.isConnected || version !== memberImageVersion) continue;
     activeMemberImages++;
@@ -121,7 +121,8 @@ function drainMemberImages() {
     source.then(value => {
       if (!value || !image.isConnected || version !== memberImageVersion) return;
       image.src = value; image.hidden = false; fallback.hidden = true;
-    }).catch(() => {
+    }).catch(error => {
+      if (image.isConnected && version === memberImageVersion) fallback.title = `画像を取得できませんでした：${error.message}`;
       if (memberImages.get(member.name) === source) memberImages.delete(member.name);
     }).finally(() => { activeMemberImages--; drainMemberImages(); });
   }

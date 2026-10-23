@@ -58,12 +58,7 @@
 <p class="note">既定はローカルの http://127.0.0.1:50021 です。別のPCやポートを使う場合は接続先のURLを指定してください。</p>
 <div class="actions"><button id="save-engine" type="button" disabled>接続先を保存・接続確認</button><button id="reset-engine" type="button">ローカルに戻す</button></div>
 <p id="engine-settings-status" role="status" aria-live="polite"></p>
-<h3>話者・スタイルの使用可否チェック</h3>
-<p class="note">保存済みの接続先で全スタイルを順番に合成します（音は再生しません）。失敗時は別の短い文でも確認します。両方失敗したスタイルは自動配役の候補から除外します。チェックには時間がかかります。読み上げを止めて実行してください。</p>
-<div class="actions"><button id="check-voices" type="button">全話者・スタイルをチェック／再チェック</button><button id="cancel-voice-check" type="button" disabled>中止</button></div>
-<p class="note">各スタイルのエラーやタイムアウトは結果に記録し、最後までチェックを続けます。通信状態によっても失敗するため、通信が復旧したら再チェックしてください。「中止」を押すと以前の保存結果を保持します。</p>
-<p id="voice-check-status" role="status" aria-live="polite"></p>
-<details><summary>チェック結果</summary><pre id="voice-check-results" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
+<p class="note">話者の事前チェックと、その結果による配役候補からの除外は一時停止しています。</p>
 <h3>再生する機器</h3>
 <label for="audio-output">スピーカー・ヘッドホン</label>
 <select id="audio-output" disabled><option value="">システムの既定</option></select>
@@ -105,6 +100,6 @@
 <script src="casting-settings.js"></script>
 <script src="speech-settings.js"></script>
 <script src="engine-settings.js"></script>
-<script src="availability.js"></script>
-<script src="availability-settings.js"></script>
+
+
 </body></html>

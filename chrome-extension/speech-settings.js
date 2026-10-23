@@ -27,21 +27,25 @@ async function previewVoice(name, styleId, button) {
   previewActive = active;
   if (button) { button.textContent = '停止'; button.setAttribute('aria-pressed', 'true'); }
   castStatus.textContent = `${name}：試聴用の音声を合成中…`;
+  let stage = '接続先設定';
   try {
     const signal = AbortSignal.any([active.controller.signal, AbortSignal.timeout(90000)]);
     const {voicevoxUrl = 'http://127.0.0.1:50021'} = await chrome.storage.local.get('voicevoxUrl');
     signal.throwIfAborted();
     const params = new URLSearchParams({text: 'こんにちは、よろしくお願いします。', speaker: styleId});
+    stage = 'audio_query';
     const response = await fetch(`${voicevoxUrl}/audio_query?${params}`, {method: 'POST', signal});
-    if (!response.ok) throw new Error(`音声クエリ HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${(await response.text().catch(() => '')).slice(0, 300)}`);
     const query = await response.json();
     signal.throwIfAborted();
+    stage = 'synthesis';
     const synthesis = await fetch(`${voicevoxUrl}/synthesis?speaker=${styleId}`, {method: 'POST', signal, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(query)});
-    if (!synthesis.ok) throw new Error(`音声合成 HTTP ${synthesis.status}`);
+    if (!synthesis.ok) throw new Error(`HTTP ${synthesis.status} ${(await synthesis.text().catch(() => '')).slice(0, 300)}`);
     const blob = await synthesis.blob();
     active.controller.signal.throwIfAborted();
     active.url = URL.createObjectURL(blob);
     active.audio = new Audio(active.url);
+    stage = '音声再生';
     const {audioOutputId = ''} = await chrome.storage.local.get('audioOutputId');
     if (active.audio.setSinkId) {
       try { await active.audio.setSinkId(audioOutputId); }
@@ -59,7 +63,7 @@ async function previewVoice(name, styleId, button) {
   } catch (error) {
     if (previewActive === active) {
       stopVoicePreview();
-      castStatus.textContent = `試聴できませんでした：${error.message}。VOICEVOXの起動を確認してください。`;
+      castStatus.textContent = `${name}（styleId=${styleId}）の試聴失敗：${stage}／${error.name}：${error.message}`;
     }
   }
 }

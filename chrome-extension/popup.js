@@ -1,4 +1,4 @@
-const POPUP_BUILD = '0.7.4';
+const POPUP_BUILD = '0.7.5';
 let staleRuntime = false;
 document.querySelector('#audio-settings').addEventListener('click', () => chrome.tabs.create({url: chrome.runtime.getURL('audio-settings.html') + (currentTabId ? `?tabId=${currentTabId}` : '')}));
 const status = document.querySelector('#status');

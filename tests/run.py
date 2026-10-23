@@ -25,9 +25,18 @@ const GLib = imports.gi.GLib;
 let failure = false;
 function setTimeout(callback, ms) { return GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, ms), () => { callback(); return GLib.SOURCE_REMOVE; }); }
 class DOMException extends Error { constructor(message, name) { super(message); this.name = name; } }
-class AbortController { constructor() { this.signal = {aborted: false, throwIfAborted() { if (this.aborted) throw new DOMException('stopped', 'AbortError'); }}; } abort() { this.signal.aborted = true; } }
+class AbortController {
+ constructor() {
+  const listeners = new Set();
+  this.signal = {aborted: false, addEventListener(name, fn) {if (name === 'abort') listeners.add(fn);}, removeEventListener(name, fn) {listeners.delete(fn);}, throwIfAborted() {if (this.aborted) throw new DOMException('stopped', 'AbortError');}};
+  this.notify = () => {for (const fn of listeners) fn(); listeners.clear();};
+ }
+ abort() {if (!this.signal.aborted) {this.signal.aborted = true; this.notify();}}
+}
 const AbortSignal = {any(signals) { return signals[0]; }, timeout() { return {}; }};
-class URL { static createObjectURL() { return 'blob:test'; } static revokeObjectURL() {} }
+const liveUrls = new Set();
+let nextUrl = 0;
+class URL { static createObjectURL() { const url = 'blob:test-' + (++nextUrl); liveUrls.add(url); return url; } static revokeObjectURL(url) {liveUrls.delete(url);} }
 class URLSearchParams { constructor(params) { this.params = params; } toString() { return Object.entries(this.params).map(([k,v]) => k+'='+encodeURIComponent(v)).join('&'); } }
 let listener;
 let audioOutputId = '';
@@ -87,7 +96,7 @@ const chrome = {storage: {local: {async get(keys) { return Object.fromEntries((A
   onMessage: {addListener(fn) { pageListener = fn; }}
 }};
 '''
-run(content_mock + '\n' + (extension / 'parser.js').read_text() + '\n' + (extension / 'auto-core.js').read_text() + '\n' + (extension / 'casting.js').read_text() + '\n' + (extension / 'content.js').read_text() + '\n' + (root / 'tests/content.test.js').read_text())
+run((extension / 'availability.js').read_text() + '\n' + content_mock + '\n' + (extension / 'parser.js').read_text() + '\n' + (extension / 'auto-core.js').read_text() + '\n' + (extension / 'casting.js').read_text() + '\n' + (extension / 'content.js').read_text() + '\n' + (root / 'tests/content.test.js').read_text())
 
 background_mock = r'''
 const GLib = imports.gi.GLib;
@@ -102,6 +111,7 @@ let lastBadge = '';
 const localData = {autoEnabled: true};
 const sessionData = {};
 const playerMessages = [];
+let backgroundListener;
 const AbortSignal = {timeout() { return {}; }};
 function importScripts() {}
 async function fetch(url) {
@@ -118,7 +128,7 @@ const chrome = {
     getURL(path) { return 'chrome-extension://test/' + path; },
     async getContexts() { return contextExists ? [{}] : []; },
     async sendMessage(message) { playerMessages.push(message); return {ok: true, status: '待機中', pending: 0}; },
-    onMessage: {addListener() {}}
+    onMessage: {addListener(fn) { backgroundListener = fn; }}
   },
   offscreen: {async createDocument() { created++; contextExists = true; }},
   storage: {local: storage(localData), session: storage(sessionData)},

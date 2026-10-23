@@ -9,10 +9,11 @@ function showVoiceCheck(report) {
     voiceCheckResults.textContent = '';
     return;
   }
-  const results = Object.values(report.results);
-  const usable = results.filter(result => result.available).length;
-  voiceCheckStatus.textContent = `${new Date(report.checkedAt).toLocaleString()}：使用可 ${usable}／除外 ${results.length - usable} スタイル`;
-  voiceCheckResults.textContent = results.map(result => `${result.available ? '○' : '×'} ${result.name}［${result.styleName}］${result.available ? '' : `：${result.stage} ${result.errorName || ''} ${result.detail}`}`).join('\n');
+  const results = Object.values(report.results).map(voiceAvailability.normalizeResult);
+  const usable = results.filter(result => result.available === true).length;
+  const excluded = results.filter(result => result.available === false).length;
+  voiceCheckStatus.textContent = `${new Date(report.checkedAt).toLocaleString()}：使用可 ${usable}／合成失敗・除外 ${excluded}／判定不能 ${results.length - usable - excluded} スタイル`;
+  voiceCheckResults.textContent = results.map(result => `${result.available === true ? '○' : result.available === false ? '×' : '？'} ${result.name}［${result.styleName}］${result.available === true ? '' : `：${result.available === null ? '判定不能（除外しません） ' : ''}${result.stage} ${result.errorName || ''} ${result.detail}`}`).join('\n');
 }
 async function loadVoiceCheck() {
   if (voiceCheckController) return;

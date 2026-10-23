@@ -100,7 +100,11 @@ async function testContent() {
   main.text = 'チェック対象「確認」';
   contentData.voicevoxUrl = 'http://checked';
   contentData['voiceAvailability:http://checked'] = {results: Object.fromEntries(voiceRegistry.catalog.flatMap(member => member.styles.map(style => [style.id, {available: false}])))};
-  if ((await response()).speeches.length) throw new Error('endpoint check results must exclude all unusable automatic voices');
+  if (!(await response()).speeches.length) throw new Error('suspended precheck results cannot exclude automatic voices');
+  for (const result of Object.values(contentData['voiceAvailability:http://checked'].results)) {
+    result.errorName = 'TypeError'; result.detail = 'Failed to fetch';
+  }
+  if (!(await response()).speeches.length) throw new Error('legacy transport failures must not exclude usable automatic voices');
   contentData.voicevoxUrl = 'http://unchecked';
   if (!(await response()).speeches.length) throw new Error('endpoint check results must not leak across endpoints');
   chrome.runtime.getManifest = () => { throw new Error('Extension context invalidated.'); };

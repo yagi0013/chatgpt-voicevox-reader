@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__chatgptVoicevoxReader) return;
   globalThis.__chatgptVoicevoxReader = true;
-  const READER_BUILD = '0.7.4';
+  const READER_BUILD = '0.7.5';
   let contextStopped = false;
   let extensionVersion = '';
   let observer = null;
@@ -38,9 +38,6 @@
     return loadingCasting;
   }
   async function loadCastingState() {
-    const endpoint = (await chrome.storage.local.get('voicevoxUrl')).voicevoxUrl || 'http://127.0.0.1:50021';
-    const availabilityKey = `voiceAvailability:${endpoint.replace(/\/+$/, '')}`;
-    casting.availability = (await chrome.storage.local.get(availabilityKey))[availabilityKey]?.results || {};
     if (castingKey.startsWith('casting:conversation:') && !/\/c\/[^/?#]+/.test(location.href)) draftKey = `casting:draft:${crypto.randomUUID()}`;
     const key = conversationKey();
     if (key === castingKey) return;

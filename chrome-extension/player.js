@@ -1,10 +1,43 @@
-const PLAYER_BUILD = '0.7.4';
+const PLAYER_BUILD = '0.7.5';
 const queue = [];
 const statuses = new Map();
 const batches = new Set();
 const pausedTabs = new Set();
 let current = null;
 let running = false;
+let generationTail = Promise.resolve();
+const PREFETCH_LIMIT = 3;
+// Reserve at most three future utterances; generationTail executes them serially.
+function prepare(job) {
+  if (!job.preparation) {
+    job.controller ||= new AbortController();
+    job.preparation = generationTail.then(() => {
+      job.controller.signal.throwIfAborted();
+      return synthesize(job);
+    }).catch(error => ({error}));
+    generationTail = job.preparation.then(() => {});
+  }
+  return job.preparation;
+}
+function prefetch() {
+  if (!current?.audio || current.controller.signal.aborted || pausedTabs.has(current.tabId)) return;
+  let remaining = PREFETCH_LIMIT - queue.filter(job => job.preparation).length;
+  for (const job of queue) {
+    if (remaining <= 0) break;
+    if (!job.preparation && !pausedTabs.has(job.tabId)) {
+      prepare(job);
+      remaining--;
+    }
+  }
+}
+function abortable(task, signal) {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException('停止', 'AbortError'));
+    signal.addEventListener('abort', abort, {once: true});
+    Promise.resolve(task).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
 // Keep the saved preference separate from the temporary playback destination.
 function updateOutput(active) {
   active.outputUpdate = (active.outputUpdate || Promise.resolve()).catch(() => {}).then(async () => {
@@ -47,7 +80,10 @@ function speechRate(text) {
 }
 function stop(tabId) {
   pausedTabs.delete(tabId);
-  for (let i = queue.length - 1; i >= 0; i--) if (queue[i].tabId === tabId) queue.splice(i, 1);
+  for (let i = queue.length - 1; i >= 0; i--) if (queue[i].tabId === tabId) {
+    queue[i].controller?.abort();
+    queue.splice(i, 1);
+  }
   if (current?.tabId === tabId) {
     current.controller.abort();
     current.audio?.pause();
@@ -80,18 +116,21 @@ function skipPlayback(tabId) {
     current.cancel?.();
   } else {
     const index = queue.findIndex(job => job.tabId === tabId);
-    if (index >= 0) queue.splice(index, 1);
+    if (index >= 0) {
+      queue[index].controller?.abort();
+      queue.splice(index, 1);
+    }
   }
   if (!queue.some(job => job.tabId === tabId)) pausedTabs.delete(tabId);
   statuses.set(tabId, pausedTabs.has(tabId) ? '一時停止中' : 'スキップしました');
   drain();
 }
 async function request(path, params, body, signal, endpoint) {
-  const response = await fetch(`${endpoint}/${path}?${new URLSearchParams(params)}`, {
+  const response = await abortable(fetch(`${endpoint}/${path}?${new URLSearchParams(params)}`, {
     method: 'POST', signal: AbortSignal.any([signal, AbortSignal.timeout(90000)]),
     headers: body ? {'Content-Type': 'application/json'} : {},
     body: body ? JSON.stringify(body) : undefined
-  });
+  }), signal);
   if (!response.ok) {
     const error = new Error(`VOICEVOX ${path}: HTTP ${response.status}`);
     error.engineResponse = true;
@@ -99,6 +138,46 @@ async function request(path, params, body, signal, endpoint) {
   }
   return response;
 }
+async function synthesize(job) {
+  const controller = job.controller;
+  const config = await chrome.runtime.sendMessage({type: 'BG_AUDIO_OUTPUT'});
+  if (!config?.ok) throw new Error(config?.error || 'VOICEVOXの設定を取得できませんでした');
+  const endpoint = config.voicevoxUrl || 'http://127.0.0.1:50021';
+  job.endpoint = endpoint;
+  controller.signal.throwIfAborted();
+  let query, blob;
+  const unavailable = [];
+  while (true) {
+    try {
+      query = await abortable((await request('audio_query', {text: job.item.speechText ?? job.item.text, speaker: job.item.styleId}, null, controller.signal, endpoint)).json(), controller.signal);
+      controller.signal.throwIfAborted();
+      query.speedScale = speechRate(job.item.text);
+      speechTools.express(query, job.item);
+      blob = await abortable((await request('synthesis', {speaker: job.item.styleId}, query, controller.signal, endpoint)).blob(), controller.signal);
+      break;
+    } catch (error) {
+      controller.signal.throwIfAborted();
+      error.engineResponse = true;
+      if (!job.item.automatic) throw error;
+      unavailable.push(job.item.name);
+      const result = await chrome.runtime.sendMessage({type: 'BG_RECAST', tabId: job.tabId, endpoint, item: job.item, unavailable}).catch(() => null);
+      controller.signal.throwIfAborted();
+      if (!result?.ok || !result.speaker || unavailable.includes(result.speaker.name)) throw error;
+      const old = job.item;
+      const voice = result.speaker;
+      const replace = item => ({...item, name: voice.name, styleId: voice.styleId, styleName: voice.styleName});
+      for (const queued of queue) {
+        if (queued.tabId === job.tabId && queued.item.automatic && queued.item.castingLabel === old.castingLabel && queued.item.castingContext === old.castingContext && queued.item.name === old.name && queued.item.requestedStyle === old.requestedStyle) queued.item = replace(queued.item);
+      }
+      job.item = replace(old);
+      if (current?.job === job) current.item = job.item;
+      if (current?.job === job) statuses.set(job.tabId, `${job.item.name}：再抽選して合成中`);
+    }
+  }
+  controller.signal.throwIfAborted();
+  return {query, blob};
+}
+
 async function drain() {
   if (running) return;
   running = true;
@@ -107,51 +186,32 @@ async function drain() {
       const index = queue.findIndex(job => !pausedTabs.has(job.tabId));
       if (index < 0) break;
       const [job] = queue.splice(index, 1);
-      const controller = new AbortController();
-      const active = {tabId: job.tabId, controller, item: job.item};
+      let controller = job.controller || (job.controller = new AbortController());
+      const active = {tabId: job.tabId, controller, item: job.item, job};
       current = active;
       let url;
       try {
         statuses.set(job.tabId, `${job.item.name}：合成中`);
-        const config = await chrome.runtime.sendMessage({type: 'BG_AUDIO_OUTPUT'});
-        if (!config?.ok) throw new Error(config?.error || 'VOICEVOXの設定を取得できませんでした');
-        const endpoint = config.voicevoxUrl || 'http://127.0.0.1:50021';
+        let prepared = await abortable(prepare(job), controller.signal);
         controller.signal.throwIfAborted();
-        let query, blob;
-        const unavailable = [];
-        while (true) {
-          try {
-            query = await (await request('audio_query', {text: job.item.speechText ?? job.item.text, speaker: job.item.styleId}, null, controller.signal, endpoint)).json();
-            controller.signal.throwIfAborted();
-            query.speedScale = speechRate(job.item.text);
-            speechTools.express(query, job.item);
-            blob = await (await request('synthesis', {speaker: job.item.styleId}, query, controller.signal, endpoint)).blob();
-            break;
-          } catch (error) {
-            controller.signal.throwIfAborted();
-            error.engineResponse = true;
-            if (!job.item.automatic) throw error;
-            unavailable.push(job.item.name);
-            const result = await chrome.runtime.sendMessage({type: 'BG_RECAST', tabId: job.tabId, endpoint, item: job.item, unavailable}).catch(() => null);
-            controller.signal.throwIfAborted();
-            if (!result?.ok || !result.speaker || unavailable.includes(result.speaker.name)) throw error;
-            const old = job.item;
-            const voice = result.speaker;
-            const replace = item => ({...item, name: voice.name, styleId: voice.styleId, styleName: voice.styleName});
-            for (const queued of queue) {
-              if (queued.tabId === job.tabId && queued.item.automatic && queued.item.castingLabel === old.castingLabel && queued.item.castingContext === old.castingContext && queued.item.name === old.name && queued.item.requestedStyle === old.requestedStyle) queued.item = replace(queued.item);
-            }
-            job.item = replace(old);
-            active.item = job.item;
-            statuses.set(job.tabId, `${job.item.name}：再抽選して合成中`);
-          }
+        if (prepared.error) throw prepared.error;
+        // Offscreen documents only expose chrome.runtime; storage lives in the worker.
+        let output = await chrome.runtime.sendMessage({type: 'BG_AUDIO_OUTPUT'});
+        while (output?.ok && job.endpoint !== (output.voicevoxUrl || 'http://127.0.0.1:50021')) {
+          controller.signal.throwIfAborted();
+          controller.abort();
+          controller = job.controller = active.controller = new AbortController();
+          job.preparation = null;
+          prepared = await abortable(prepare(job), controller.signal);
+          controller.signal.throwIfAborted();
+          if (prepared.error) throw prepared.error;
+          output = await chrome.runtime.sendMessage({type: 'BG_AUDIO_OUTPUT'});
         }
+        if (!output?.ok) throw new Error(output?.error || '音声出力先の設定を取得できませんでした');
         controller.signal.throwIfAborted();
+        const {query, blob} = prepared;
         url = URL.createObjectURL(blob);
         active.audio = new Audio(url);
-        // Offscreen documents only expose chrome.runtime; storage lives in the worker.
-        const output = await chrome.runtime.sendMessage({type: 'BG_AUDIO_OUTPUT'});
-        if (!output?.ok) throw new Error(output?.error || '音声出力先の設定を取得できませんでした');
         active.audioOutputId = output.audioOutputId || '';
         await updateOutput(active);
         controller.signal.throwIfAborted();
@@ -168,6 +228,7 @@ async function drain() {
               // pause() can reject a pending play(); resuming uses a new attempt.
               if (attempt === active.playAttempt && !pausedTabs.has(job.tabId)) reject(error);
             });
+            prefetch();
           };
           if (pausedTabs.has(job.tabId)) statuses.set(job.tabId, '一時停止中');
           else active.play();
@@ -222,6 +283,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (batches.size > 2000) batches.delete(batches.values().next().value);
       for (const item of message.items) queue.push({tabId: message.tabId, item});
       drain();
+      prefetch();
     }
     respond({ok: true});
   } else if (message.type === 'STOP') {

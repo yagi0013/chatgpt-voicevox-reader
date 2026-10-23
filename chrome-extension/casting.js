@@ -28,11 +28,7 @@
       return [...this.entries.values()].find(entry => normalize(entry.label) === key || entry.aliases.some(alias => normalize(alias) === key));
     }
     draw(exclude = '', unavailable = []) {
-      const catalog = voiceRegistry.catalog.filter(member => !unavailable.includes(member.name)).map(member => {
-        const styles = member.styles.filter(style => this.availability?.[style.id]?.available !== false);
-        const standard = styles.find(style => style.id === member.styleId) || styles[0];
-        return standard ? {...member, styles, styleId: standard.id, styleName: standard.name} : null;
-      }).filter(Boolean);
+      const catalog = voiceRegistry.catalog.filter(member => !unavailable.includes(member.name));
       const pool = catalog.filter(member => !this.settings.candidates.length || this.settings.candidates.includes(member.name));
       if (!pool.length) return null;
       const occupied = new Set([...this.used, ...[...this.entries.values()].map(entry => entry.name)]);
@@ -74,11 +70,7 @@
       }
       let member = voiceRegistry.resolve(entry.name);
       if (!member) return {...parsed, speaker: null};
-      if (!entry.manual && member.styles.every(style => this.availability?.[style.id]?.available === false)) {
-        if (!this.draw()) return {...parsed, speaker: null};
-        this.reroll(entry.label); entry = this.find(label); member = voiceRegistry.resolve(entry.name);
-      }
-      const styles = member.styles.filter(style => entry.manual || this.availability?.[style.id]?.available !== false);
+      const styles = member.styles;
       const style = styles.find(style => style.id === entry.styleId) || styles.find(style => style.id === member.styleId) || styles[0];
       if (!entry.manual) entry.styleId = style.id;
       const requested = parsed.requestedStyle ? styles.find(style => normalize(style.name) === normalize(parsed.requestedStyle)) : null;
