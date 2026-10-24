@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT VOICEVOX 応答取得",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "ChatGPTのセリフをVOICEVOXで読み上げます。話者別の画像表示、再生操作、配役・辞書・音声出力先の設定に対応。",
   "permissions": [
     "activeTab",

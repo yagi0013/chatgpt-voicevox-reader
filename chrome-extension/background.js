@@ -1,5 +1,5 @@
 importScripts('speakers.js', 'speech-tools.js');
-const WORKER_BUILD = '0.7.5';
+const WORKER_BUILD = '0.7.6';
 let creating;
 const operations = new Map();
 let engineState = {online: null, version: '', checkedAt: 0};

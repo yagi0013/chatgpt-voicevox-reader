@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__chatgptVoicevoxReader) return;
   globalThis.__chatgptVoicevoxReader = true;
-  const READER_BUILD = '0.7.5';
+  const READER_BUILD = '0.7.6';
   let contextStopped = false;
   let extensionVersion = '';
   let observer = null;

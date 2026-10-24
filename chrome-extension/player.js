@@ -1,4 +1,4 @@
-const PLAYER_BUILD = '0.7.5';
+const PLAYER_BUILD = '0.7.6';
 const queue = [];
 const statuses = new Map();
 const batches = new Set();
@@ -7,6 +7,8 @@ let current = null;
 let running = false;
 let generationTail = Promise.resolve();
 const PREFETCH_LIMIT = 3;
+const SYNTHESIS_RETRY_LIMIT = 2;
+const SYNTHESIS_RETRY_DELAY_MS = 2000;
 // Reserve at most three future utterances; generationTail executes them serially.
 function prepare(job) {
   if (!job.preparation) {
@@ -148,31 +150,41 @@ async function synthesize(job) {
   let query, blob;
   const unavailable = [];
   while (true) {
-    try {
-      query = await abortable((await request('audio_query', {text: job.item.speechText ?? job.item.text, speaker: job.item.styleId}, null, controller.signal, endpoint)).json(), controller.signal);
-      controller.signal.throwIfAborted();
-      query.speedScale = speechRate(job.item.text);
-      speechTools.express(query, job.item);
-      blob = await abortable((await request('synthesis', {speaker: job.item.styleId}, query, controller.signal, endpoint)).blob(), controller.signal);
-      break;
-    } catch (error) {
-      controller.signal.throwIfAborted();
-      error.engineResponse = true;
-      if (!job.item.automatic) throw error;
-      unavailable.push(job.item.name);
-      const result = await chrome.runtime.sendMessage({type: 'BG_RECAST', tabId: job.tabId, endpoint, item: job.item, unavailable}).catch(() => null);
-      controller.signal.throwIfAborted();
-      if (!result?.ok || !result.speaker || unavailable.includes(result.speaker.name)) throw error;
-      const old = job.item;
-      const voice = result.speaker;
-      const replace = item => ({...item, name: voice.name, styleId: voice.styleId, styleName: voice.styleName});
-      for (const queued of queue) {
-        if (queued.tabId === job.tabId && queued.item.automatic && queued.item.castingLabel === old.castingLabel && queued.item.castingContext === old.castingContext && queued.item.name === old.name && queued.item.requestedStyle === old.requestedStyle) queued.item = replace(queued.item);
+    let error;
+    for (let attempt = 0; attempt <= SYNTHESIS_RETRY_LIMIT; attempt++) {
+      try {
+        query = await abortable((await request('audio_query', {text: job.item.speechText ?? job.item.text, speaker: job.item.styleId}, null, controller.signal, endpoint)).json(), controller.signal);
+        controller.signal.throwIfAborted();
+        query.speedScale = speechRate(job.item.text);
+        speechTools.express(query, job.item);
+        blob = await abortable((await request('synthesis', {speaker: job.item.styleId}, query, controller.signal, endpoint)).blob(), controller.signal);
+        error = null;
+        break;
+      } catch (caught) {
+        controller.signal.throwIfAborted();
+        error = caught;
+        error.engineResponse = true;
+        if (attempt === SYNTHESIS_RETRY_LIMIT) break;
+        if (current?.job === job) statuses.set(job.tabId, `${job.item.name}：取得失敗、2秒後に再試行（${attempt + 1}/${SYNTHESIS_RETRY_LIMIT}）`);
+        await abortable(new Promise(resolve => setTimeout(resolve, SYNTHESIS_RETRY_DELAY_MS)), controller.signal);
       }
-      job.item = replace(old);
-      if (current?.job === job) current.item = job.item;
-      if (current?.job === job) statuses.set(job.tabId, `${job.item.name}：再抽選して合成中`);
     }
+    if (!error) break;
+    controller.signal.throwIfAborted();
+    if (!job.item.automatic) throw error;
+    unavailable.push(job.item.name);
+    const result = await chrome.runtime.sendMessage({type: 'BG_RECAST', tabId: job.tabId, endpoint, item: job.item, unavailable}).catch(() => null);
+    controller.signal.throwIfAborted();
+    if (!result?.ok || !result.speaker || unavailable.includes(result.speaker.name)) throw error;
+    const old = job.item;
+    const voice = result.speaker;
+    const replace = item => ({...item, name: voice.name, styleId: voice.styleId, styleName: voice.styleName});
+    for (const queued of queue) {
+      if (queued.tabId === job.tabId && queued.item.automatic && queued.item.castingLabel === old.castingLabel && queued.item.castingContext === old.castingContext && queued.item.name === old.name && queued.item.requestedStyle === old.requestedStyle) queued.item = replace(queued.item);
+    }
+    job.item = replace(old);
+    if (current?.job === job) current.item = job.item;
+    if (current?.job === job) statuses.set(job.tabId, `${job.item.name}：再抽選して合成中`);
   }
   controller.signal.throwIfAborted();
   return {query, blob};

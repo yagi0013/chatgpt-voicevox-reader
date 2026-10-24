@@ -152,12 +152,25 @@ async function testPlayer() {
   };
   let rejectPath = 'audio_query';
   let rejectAll = false;
+  let persistentFailure = false;
+  let transientFailures = 2;
+  let failedAttempts = 0;
   fetch = async (url, options) => {
-    if (url.includes('/' + rejectPath + '?') && (rejectAll || url.includes('speaker=3'))) return {ok: false, status: 422};
+    if (url.includes('/' + rejectPath + '?') && (rejectAll || (url.includes('speaker=3') && (persistentFailure || transientFailures > 0)))) {
+      failedAttempts++;
+      if (transientFailures > 0) transientFailures--;
+      return {ok: false, status: 422};
+    }
     return realFetch(url, options);
   };
   const randomItem = {...item, name: 'ずんだもん', styleId: 3, automatic: true, castingLabel: '旅人'};
   let beforeRecovery = played;
+  const beforeTransientRerolls = rerolls;
+  await send({type: 'QUEUE', tabId: 14, batchId: 'transient-api-error', items: [{...randomItem, automatic: false}]});
+  for (let i = 0; i < 20; i++) await wait();
+  if (played !== beforeRecovery + 1 || failedAttempts !== 2 || rerolls !== beforeTransientRerolls) throw new Error('transient API failure must retry the same voice twice before succeeding');
+  persistentFailure = true;
+  beforeRecovery = played;
   await send({type: 'QUEUE', tabId: 14, batchId: 'fixed-api-error', items: [{...randomItem, automatic: false}, {...item, styleId: 2}]});
   for (let i = 0; i < 20; i++) await wait();
   if (played !== beforeRecovery + 1 || rerolls) throw new Error('fixed API failure skips only one speech');

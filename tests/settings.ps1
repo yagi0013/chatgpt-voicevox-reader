@@ -114,7 +114,9 @@ foreach ($suite in @('background', 'player')) {
  $mockSource = [regex]::Match($runner, ($suite + "_mock = r'''(.*?)'''"), 'Singleline').Groups[1].Value
  $mockSource = [regex]::Replace($mockSource, 'const GLib = imports.gi.GLib;\r?\n', '')
  $mockSource = [regex]::Replace($mockSource, 'function setTimeout\(callback, ms\).*?\r?\n', '')
- $source += $mockSource + "`n" + [IO.File]::ReadAllText((Join-Path $extension ($suite + '.js'))) + "`n"
+ $implementation = [IO.File]::ReadAllText((Join-Path $extension ($suite + '.js')))
+ if ($suite -eq 'player') { $implementation = $implementation.Replace('const SYNTHESIS_RETRY_DELAY_MS = 2000;', 'const SYNTHESIS_RETRY_DELAY_MS = 1;') }
+ $source += $mockSource + "`n" + $implementation + "`n"
  $test = [IO.File]::ReadAllText((Join-Path $PSScriptRoot ($suite + '.test.js')))
  $test = $test.Substring(0, $test.IndexOf('const loop ='))
  $function = if ($suite -eq 'background') {'testBackground'} else {'testPlayer'}

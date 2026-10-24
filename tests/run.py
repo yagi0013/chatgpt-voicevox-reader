@@ -53,7 +53,8 @@ const synthesisQueries = [];
 async function fetch(url, options) { requests.push(url); if (url.includes('/synthesis?')) synthesisQueries.push(JSON.parse(options.body)); if (failFetch) throw new Error('connection refused'); return {ok: true, async json() { return {speedScale: 1, pitchScale: 0.15}; }, async blob() { return {}; }}; }
 class Audio { async setSinkId(id) { sinks.push(id); if (failSink && id) throw new Error('missing device'); } async play() { played++; if (!holdAudio) setTimeout(() => this.onended(), 0); } pause() {} removeAttribute() {} load() {} }
 '''
-run((extension / 'speech-tools.js').read_text() + '\n' + player_mock + '\n' + (extension / 'player.js').read_text() + '\n' + (root / 'tests/player.test.js').read_text())
+player_source = (extension / 'player.js').read_text().replace('const SYNTHESIS_RETRY_DELAY_MS = 2000;', 'const SYNTHESIS_RETRY_DELAY_MS = 1;')
+run((extension / 'speech-tools.js').read_text() + '\n' + player_mock + '\n' + player_source + '\n' + (root / 'tests/player.test.js').read_text())
 
 content_mock = r'''
 const GLib = imports.gi.GLib;
